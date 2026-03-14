@@ -1,14 +1,43 @@
 version: "3.9"
 
-# ── Services overview ─────────────────────────────────────────────────────────
-#  olama        — Ollama LLM engine with Intel GPU passthrough  (port 11434)
-#  open-webui   — Chat UI; web search is OFF by default, toggle per message   (port 3000)
-#  searxng      — Self-hosted search engine used ONLY when you enable web search
-#                 (internal only — not exposed to the host)
+# =============================================================================
+# OLAMA — Intel GPU Docker Stack
+# =============================================================================
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  CATEGORY: AI CORE                                                      │
+# │    olama       — Ollama LLM engine with Intel GPU passthrough           │
+# │                  data: ${DATA_DIR}/models   (can grow to 100+ GB)       │
+# ├─────────────────────────────────────────────────────────────────────────┤
+# │  CATEGORY: INTERFACE                                                    │
+# │    open-webui  — Browser chat UI connected to olama    (port 3000)      │
+# │                  data: ${DATA_DIR}/webui    (chat history, docs, RAG)   │
+# ├─────────────────────────────────────────────────────────────────────────┤
+# │  CATEGORY: SEARCH                                                       │
+# │    searxng     — Self-hosted search (internal only, no host port)       │
+# │                  config: ${DATA_DIR}/searxng                            │
+# ├─────────────────────────────────────────────────────────────────────────┤
+# │  EXPORTABLE DATA  →  everything under DATA_DIR                         │
+# │  LOGS             →  ${DATA_DIR}/logs/<container>.log                  │
+# │                       or: bash scripts/logs.sh export                  │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# Copy .env.example → docker/.env and set DATA_DIR to your storage path.
+# Run `mkdir -p` for all subdirs before first start (docker compose creates
+# them but as root — better to create them yourself first).
+#
+# =============================================================================
 
 services:
 
-  # ── LLM engine ──────────────────────────────────────────────────────────────
+# =============================================================================
+#  CATEGORY: AI CORE
+#  Purpose : LLM inference engine; all model weights live on the host
+#  Port    : 11434 (raw Ollama API — also consumed by open-webui internally)
+#  Data    : ${DATA_DIR}/models — store on large/fast drive; copy or rsync
+#            to export. Models are plain files and can be moved freely.
+# =============================================================================
+
   olama:
     build:
       context: .
@@ -19,8 +48,13 @@ services:
     container_name: olama
     restart: unless-stopped
 
-    # Intel GPU device passthrough
-    # Works for Intel Arc, Iris Xe, and integrated Intel graphics
+    labels:
+      com.olama.category: "ai-core"
+      com.olama.description: "Ollama LLM inference engine — Intel GPU"
+      com.olama.data: "${DATA_DIR:-/opt/olama}/models"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/olama.log"
+
+    # Intel GPU device passthrough (Arc / Iris Xe / integrated Intel graphics)
     devices:
       - /dev/dri:/dev/dri
     group_add:
@@ -34,15 +68,32 @@ services:
       - "${OLLAMA_PORT:-11434}:11434"
 
     volumes:
-      - olama_models:/root/.ollama
+      # ── Models (large, exportable) ────────────────────────────────────────
+      # Bind-mounted to host so models survive image rebuilds and can be
+      # copied/moved to another machine without re-downloading.
+      - ${DATA_DIR:-/opt/olama}/models:/root/.ollama
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "olama"
 
     networks:
       - olama_net
 
-  # ── Chat UI ──────────────────────────────────────────────────────────────────
-  # Access at http://localhost:3000
-  # Web search is DISABLED by default — enable it per message with the
-  # web-search toggle button in the chat bar (magnifying glass icon).
+# =============================================================================
+#  CATEGORY: INTERFACE
+#  Purpose : Browser-based chat UI; manages conversations, RAG documents,
+#            and user settings. Web search is OFF by default — enable per
+#            message via the magnifying glass toggle in the chat bar.
+#  Port    : 3000 → http://localhost:3000
+#  Data    : ${DATA_DIR}/webui — contains SQLite DB (chat history, users),
+#            ChromaDB vector store (RAG embeddings), uploaded documents.
+#            Back up or rsync this directory to export everything.
+# =============================================================================
+
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
@@ -51,54 +102,90 @@ services:
       - olama
       - searxng
 
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "Open WebUI chat interface"
+      com.olama.data: "${DATA_DIR:-/opt/olama}/webui"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/webui.log"
+
     ports:
       - "${WEBUI_PORT:-3000}:8080"
 
     environment:
-      # Point to the Ollama engine
+      # LLM engine
       - OLLAMA_BASE_URL=http://olama:11434
 
-      # Web search — uses SearXNG internally; user must toggle it on per message
+      # Web search — SearXNG backend; off by default, user toggles per message
       - ENABLE_RAG_WEB_SEARCH=true
       - RAG_WEB_SEARCH_ENGINE=searxng
       - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>&format=json
 
-      # Disable login for local/home use; set to "true" to require accounts
+      # Logging — write app-level logs at INFO level (use DEBUG for deeper analysis)
+      - LOG_LEVEL=${WEBUI_LOG_LEVEL:-INFO}
+
+      # Auth — set to "true" if you want login-protected accounts
       - WEBUI_AUTH=false
 
     volumes:
-      - open_webui_data:/app/backend/data
+      # ── Chat history, RAG docs, embeddings, settings (exportable) ─────────
+      - ${DATA_DIR:-/opt/olama}/webui:/app/backend/data
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "open-webui"
 
     networks:
       - olama_net
 
-  # ── Web search backend ───────────────────────────────────────────────────────
-  # Private — reachable only by open-webui inside the Docker network.
-  # Queries go out to the internet only when you trigger a web search in the UI.
+# =============================================================================
+#  CATEGORY: SEARCH
+#  Purpose : Self-hosted search engine. Aggregates public search results and
+#            returns them to Open WebUI when the user toggles web search on.
+#            Never exposes a host port — reachable only inside olama_net.
+#  Data    : ${DATA_DIR}/searxng — config only (settings.yml). Small but
+#            important to back up if you customise search engines or add
+#            custom categories.
+# =============================================================================
+
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
     restart: unless-stopped
 
-    # No host port published — SearXNG is internal only
+    labels:
+      com.olama.category: "search"
+      com.olama.description: "SearXNG self-hosted search backend (internal only)"
+      com.olama.data: "${DATA_DIR:-/opt/olama}/searxng"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/searxng.log"
+
+    # No host port — SearXNG is private to the Docker network
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080
 
     volumes:
-      # settings.yml enables JSON API responses required by Open WebUI
-      - ./searxng:/etc/searxng
+      # ── Search config (exportable) ────────────────────────────────────────
+      # Copy docker/searxng/settings.yml here on first run (see README).
+      - ${DATA_DIR:-/opt/olama}/searxng:/etc/searxng
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "searxng"
 
     networks:
       - olama_net
 
-# ── Volumes ────────────────────────────────────────────────────────────────────
-volumes:
-  olama_models:
-    driver: local
-  open_webui_data:
-    driver: local
+# =============================================================================
+#  NETWORK
+# =============================================================================
 
-# ── Network ────────────────────────────────────────────────────────────────────
 networks:
   olama_net:
     driver: bridge
+    labels:
+      com.olama.description: "Internal network — olama, open-webui, searxng"

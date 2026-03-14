@@ -10,13 +10,15 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 ## What's Included
 
-| Container | Purpose | Default Port |
-|---|---|---|
-| `olama` | Ollama LLM engine with Intel GPU passthrough | `11434` |
-| `open-webui` | Chat interface — talk to the AI in your browser | `3000` |
-| `searxng` | Self-hosted search engine for web browsing | internal only |
+| Container | Category | Purpose | Port |
+|---|---|---|---|
+| `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
+| `open-webui` | **Interface** | Browser chat UI connected to the AI | `3000` |
+| `searxng` | **Search** | Self-hosted web search backend | internal only |
 
 **Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
+
+All data is stored under a single configurable `DATA_DIR` on the host — no anonymous Docker volumes — so everything is exportable by simply copying that directory.
 
 ---
 
@@ -97,16 +99,28 @@ cd Olama-intelgpu
 cp .env.example docker/.env
 ```
 
-Open `docker/.env` and change any values you need. The defaults work for most setups:
+Open `docker/.env`. At minimum, set `DATA_DIR` to wherever you have enough space (external drive, NAS, etc.):
 
 ```env
-OLLAMA_PORT=11434    # raw API port
-OLLAMA_VERSION=latest
+# Root for all data and logs — change to your storage path
+DATA_DIR=/opt/olama
+
+OLLAMA_PORT=11434
+WEBUI_PORT=3000
 OLLAMA_PULL_MODEL=mistral
-WEBUI_PORT=3000      # chat UI port
 ```
 
-Also open `docker/searxng/settings.yml` and set a unique `secret_key`:
+Then create the data directories and copy the SearXNG config:
+
+```bash
+# Create all data subdirs (Docker would create them as root if you skip this)
+mkdir -p ${DATA_DIR}/{models,webui,searxng,logs}
+
+# Copy the SearXNG config into the data directory
+cp docker/searxng/settings.yml ${DATA_DIR}/searxng/settings.yml
+```
+
+Open `${DATA_DIR}/searxng/settings.yml` and set a unique `secret_key`:
 
 ```yaml
 server:
@@ -158,11 +172,13 @@ The AI will fetch and summarize relevant search results, then answer your questi
 **Stopping and removing**
 
 ```bash
-# Stop all containers (models and chat history are preserved)
+# Stop all containers (all data in DATA_DIR is preserved)
 docker compose down
 
-# Stop and delete all data including models and chat history
-docker compose down -v
+# Stop containers and wipe all data (DATA_DIR is NOT deleted — only named volumes)
+# Since all data is bind-mounted, "docker compose down -v" has no effect on your files.
+# To fully wipe data: rm -rf ${DATA_DIR}
+docker compose down
 ```
 
 ---
@@ -182,6 +198,104 @@ You (toggle ON) → Open WebUI → SearXNG → Public search engines
 - **SearXNG is private** — it has no exposed port and is only reachable by Open WebUI inside the Docker network
 - **No API keys needed** — SearXNG aggregates results from public search engines
 - **You stay in control** — the toggle must be on for any web request to happen
+
+---
+
+## Storage — Exportable Data
+
+All persistent data is bind-mounted to the host under `DATA_DIR`. Nothing is locked inside Docker volumes.
+
+```
+${DATA_DIR}/
+├── models/        ← Ollama model weights          (can reach 100+ GB for large models)
+├── webui/         ← Chat history, RAG documents, ChromaDB vector DB, user settings
+├── searxng/       ← SearXNG settings.yml config
+└── logs/          ← Log files exported by scripts/logs.sh
+```
+
+**To export or back up everything:**
+
+```bash
+# Copy entire data dir to external drive / NAS
+rsync -av --progress ${DATA_DIR}/ /mnt/backup/olama/
+
+# Or just models (largest item)
+rsync -av --progress ${DATA_DIR}/models/ /mnt/backup/olama-models/
+
+# Or just chat history and documents
+rsync -av --progress ${DATA_DIR}/webui/ /mnt/backup/olama-webui/
+```
+
+**To move to a new machine:**
+
+1. Copy `${DATA_DIR}/` to the new machine
+2. Set `DATA_DIR` in `docker/.env` to the copied path
+3. Run `docker compose up -d` — all history and models are immediately available
+
+---
+
+## Logs — Viewing and Analyzing
+
+All containers write logs to Docker's `json-file` driver with automatic rotation (10 MB × 5 files per container by default, configurable via `LOG_MAX_SIZE` / `LOG_MAX_FILES` in `.env`).
+
+### Log helper script
+
+```bash
+# Show container categories, running state, and disk usage
+bash scripts/logs.sh status
+
+# Live tail all containers (Ctrl-C to stop)
+bash scripts/logs.sh tail
+
+# Live tail a single container
+bash scripts/logs.sh tail olama
+bash scripts/logs.sh tail open-webui
+bash scripts/logs.sh tail searxng
+
+# Dump recent logs to terminal (last 100 lines by default)
+bash scripts/logs.sh show
+bash scripts/logs.sh show olama 200
+
+# Show only ERROR / WARN / CRITICAL lines across all containers
+bash scripts/logs.sh errors
+
+# Export all logs to ${DATA_DIR}/logs/*.log for offline analysis
+bash scripts/logs.sh export
+```
+
+### Log files after export
+
+```
+${DATA_DIR}/logs/
+├── olama.log           ← LLM engine — GPU errors, model load failures, inference errors
+├── open-webui.log      ← Chat UI — RAG errors, auth failures, API call errors
+├── searxng.log         ← Search — query failures, engine timeouts, config errors
+└── export-summary.txt  ← File sizes, line counts, timestamp of export
+```
+
+### Searching exported logs for issues
+
+```bash
+# All errors across all services
+grep -iE "error|warn|critical|exception" ${DATA_DIR}/logs/*.log
+
+# GPU-related issues
+grep -i "intel\|gpu\|opencl\|device" ${DATA_DIR}/logs/olama.log
+
+# Web search failures
+grep -iE "searxng|timeout|search" ${DATA_DIR}/logs/open-webui.log
+
+# RAG / document issues
+grep -iE "embed|chroma|rag|document" ${DATA_DIR}/logs/open-webui.log
+```
+
+### Change log verbosity
+
+Set `WEBUI_LOG_LEVEL=DEBUG` in `docker/.env` and restart `open-webui` for detailed logs:
+
+```bash
+docker compose up -d open-webui
+```
 
 ---
 
@@ -249,10 +363,11 @@ Olama-intelgpu/
 │   ├── Dockerfile               # Builds Ollama + Intel oneAPI GPU drivers
 │   ├── docker-compose.yml       # Full stack: olama + open-webui + searxng
 │   └── searxng/
-│       └── settings.yml         # SearXNG config (enable JSON API, set secret key)
+│       └── settings.yml         # SearXNG default config — copy to DATA_DIR/searxng/
 ├── scripts/
 │   ├── install.sh               # One-command CLI installer (olama engine only)
-│   └── pull-model.sh            # Interactive model downloader (default: mistral)
+│   ├── pull-model.sh            # Interactive model downloader (default: mistral)
+│   └── logs.sh                  # Log viewer, exporter, and error filter
 ├── runtipi/
 │   └── apps/
 │       └── olama/
@@ -261,4 +376,10 @@ Olama-intelgpu/
 │           └── metadata/
 │               └── description.md  # App store description
 └── .env.example                 # All configurable environment variables
+
+${DATA_DIR}/                     # Host storage (default /opt/olama)
+├── models/                      # AI CORE  — Ollama model weights
+├── webui/                       # INTERFACE — chat history, RAG, settings
+├── searxng/                     # SEARCH   — settings.yml (copy from docker/searxng/)
+└── logs/                        # LOGS     — exported by scripts/logs.sh
 ```
