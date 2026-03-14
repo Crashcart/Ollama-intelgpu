@@ -8,6 +8,18 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 ---
 
+## What's Included
+
+| Container | Purpose | Default Port |
+|---|---|---|
+| `olama` | Ollama LLM engine with Intel GPU passthrough | `11434` |
+| `open-webui` | Chat interface — talk to the AI in your browser | `3000` |
+| `searxng` | Self-hosted search engine for web browsing | internal only |
+
+**Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
+
+---
+
 ## Prerequisites
 
 Before installing, make sure you have:
@@ -19,9 +31,11 @@ Before installing, make sure you have:
 
 ---
 
-## Method 1 — One-Command CLI Install (Recommended)
+## Method 1 — One-Command CLI Install
 
 This is the fastest way to get running. The script handles everything: directory setup, compose file generation, image pull, and container start.
+
+> **Note:** The CLI installer starts only the `olama` engine. For the full stack (chat UI + web search), use Method 2.
 
 **Step 1 — Run the installer**
 
@@ -38,8 +52,6 @@ The installer will:
 
 **Step 2 — Pull a model**
 
-Once the container is running, download mistral (default) or any model you want:
-
 ```bash
 # Interactive menu — press Enter to accept mistral as the default
 bash scripts/pull-model.sh
@@ -48,20 +60,13 @@ bash scripts/pull-model.sh
 bash scripts/pull-model.sh mistral
 ```
 
-**Step 3 — Chat**
+**Step 3 — Chat via terminal**
 
 ```bash
-# Interactive chat in the terminal
 docker exec -it olama ollama run mistral
-
-# Or send a single prompt via the API
-curl http://localhost:11434/api/generate \
-  -d '{"model": "mistral", "prompt": "Hello!", "stream": false}'
 ```
 
 **Optional — Custom install options**
-
-Download the script first if you want to pass flags before running:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh -o install.sh
@@ -75,9 +80,9 @@ bash install.sh --port 11434 --data-dir /opt/olama --version latest
 
 ---
 
-## Method 2 — Docker Compose (Manual)
+## Method 2 — Docker Compose (Full Stack — Recommended)
 
-Use this method if you prefer to manage the compose file yourself or want to build the image locally with Intel GPU drivers baked in.
+This starts all three containers: the LLM engine, the chat UI, and the web search backend.
 
 **Step 1 — Clone the repository**
 
@@ -86,30 +91,34 @@ git clone https://github.com/Crashcart/Olama-intelgpu.git
 cd Olama-intelgpu
 ```
 
-**Step 2 — (Optional) Configure environment**
-
-Copy the example env file and edit any values you want to change:
+**Step 2 — Configure environment**
 
 ```bash
 cp .env.example docker/.env
-# Edit docker/.env to change OLLAMA_PORT, OLLAMA_VERSION, etc.
 ```
 
-Key variables:
+Open `docker/.env` and change any values you need. The defaults work for most setups:
 
-| Variable | Default | Description |
-|---|---|---|
-| `OLLAMA_PORT` | `11434` | Host port Olama listens on |
-| `OLLAMA_VERSION` | `latest` | Ollama image tag |
-| `OLLAMA_DATA_DIR` | `/opt/olama` | Host path for model storage |
-| `OLLAMA_PULL_MODEL` | `mistral` | Model to auto-pull on first start |
+```env
+OLLAMA_PORT=11434    # raw API port
+OLLAMA_VERSION=latest
+OLLAMA_PULL_MODEL=mistral
+WEBUI_PORT=3000      # chat UI port
+```
+
+Also open `docker/searxng/settings.yml` and set a unique `secret_key`:
+
+```yaml
+server:
+  secret_key: "replace-with-a-long-random-string"
+```
 
 **Step 3 — Build and start**
 
 ```bash
 cd docker
 
-# First run: build the image (includes Intel GPU drivers) then start
+# First run: builds the Olama image (Intel GPU drivers) and starts all containers
 docker compose up --build -d
 
 # Subsequent starts (image already built):
@@ -118,48 +127,61 @@ docker compose up -d
 
 The image build takes a few minutes the first time — it installs Intel oneAPI GPU drivers on top of the Ollama base image.
 
-**Step 4 — Verify the container is running**
+**Step 4 — Open the chat UI**
+
+Open your browser at **http://localhost:3000**
+
+On first load, Open WebUI will connect to Olama automatically. Select **mistral** (or whichever model you pulled) from the model selector at the top.
+
+**Step 5 — Pull a model (first time only)**
+
+The container starts without any model. Pull one from the UI or terminal:
 
 ```bash
-docker ps | grep olama
-# Should show the olama container with port 11434 mapped
-
-# Check Olama is responding
-curl http://localhost:11434/api/tags
-```
-
-**Step 5 — Pull a model**
-
-The container starts without any model. Pull one now:
-
-```bash
-# Pull mistral (recommended — well-rounded general model, ~4.1 GB)
+# From terminal
 docker exec -it olama ollama pull mistral
 
 # Or use the helper script from the repo root
 bash scripts/pull-model.sh
 ```
 
-**Step 6 — Chat**
+**Step 6 — Enable web search (when you want it)**
 
-```bash
-# Interactive chat
-docker exec -it olama ollama run mistral
+Web search is **off by default**. To search the web for a specific question:
 
-# Single prompt via API
-curl http://localhost:11434/api/generate \
-  -d '{"model": "mistral", "prompt": "Hello!", "stream": false}'
-```
+1. In the chat bar, click the **magnifying glass icon** (web search toggle)
+2. It turns blue — your next message will search the web before answering
+3. Click it again to turn web search off
+
+The AI will fetch and summarize relevant search results, then answer your question. SearXNG does not run any searches unless you activate the toggle.
 
 **Stopping and removing**
 
 ```bash
-# Stop the container (models are preserved in the named volume)
+# Stop all containers (models and chat history are preserved)
 docker compose down
 
-# Stop and delete the model volume (removes all downloaded models)
+# Stop and delete all data including models and chat history
 docker compose down -v
 ```
+
+---
+
+## How Web Search Works
+
+```
+You (toggle ON) → Open WebUI → SearXNG → Public search engines
+                                    ↓
+                          Results returned to Open WebUI
+                                    ↓
+                    Open WebUI sends results + your question → Olama (mistral)
+                                    ↓
+                              AI answers you
+```
+
+- **SearXNG is private** — it has no exposed port and is only reachable by Open WebUI inside the Docker network
+- **No API keys needed** — SearXNG aggregates results from public search engines
+- **You stay in control** — the toggle must be on for any web request to happen
 
 ---
 
@@ -175,7 +197,7 @@ docker compose down -v
 | `mistral` | **~4.1 GB** | **Default — best all-around** |
 | `llama3.1:8b` | ~4.7 GB | High quality, 8B params |
 
-Pull any model with:
+Pull any model:
 
 ```bash
 docker exec -it olama ollama pull <model-name>
@@ -224,11 +246,13 @@ docker exec olama ollama run mistral "hello" 2>&1 | grep -i intel || true
 ```
 Olama-intelgpu/
 ├── docker/
-│   ├── Dockerfile           # Builds Ollama + Intel oneAPI GPU drivers
-│   └── docker-compose.yml   # Standalone compose for manual use
+│   ├── Dockerfile               # Builds Ollama + Intel oneAPI GPU drivers
+│   ├── docker-compose.yml       # Full stack: olama + open-webui + searxng
+│   └── searxng/
+│       └── settings.yml         # SearXNG config (enable JSON API, set secret key)
 ├── scripts/
-│   ├── install.sh           # One-command CLI installer
-│   └── pull-model.sh        # Interactive model downloader (default: mistral)
+│   ├── install.sh               # One-command CLI installer (olama engine only)
+│   └── pull-model.sh            # Interactive model downloader (default: mistral)
 ├── runtipi/
 │   └── apps/
 │       └── olama/
@@ -236,5 +260,5 @@ Olama-intelgpu/
 │           ├── docker-compose.yml   # Runtipi-compatible compose
 │           └── metadata/
 │               └── description.md  # App store description
-└── .env.example             # All configurable environment variables
+└── .env.example                 # All configurable environment variables
 ```

@@ -1,7 +1,15 @@
 version: "3.9"
 
+# ── Services overview ─────────────────────────────────────────────────────────
+#  olama        — Ollama LLM engine with Intel GPU passthrough  (port 11434)
+#  open-webui   — Chat UI; web search is OFF by default, toggle per message   (port 3000)
+#  searxng      — Self-hosted search engine used ONLY when you enable web search
+#                 (internal only — not exposed to the host)
+
 services:
-  ollama:
+
+  # ── LLM engine ──────────────────────────────────────────────────────────────
+  olama:
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,32 +22,83 @@ services:
     # Intel GPU device passthrough
     # Works for Intel Arc, Iris Xe, and integrated Intel graphics
     devices:
-      - /dev/dri:/dev/dri       # DRM/KMS render nodes
+      - /dev/dri:/dev/dri
     group_add:
-      - video                   # access to /dev/dri devices
-      - render                  # access to renderD* nodes
+      - video
+      - render
 
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
-      # Uncomment to set model storage location
-      # - OLLAMA_MODELS=/root/.ollama/models
 
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
 
     volumes:
-      # Persist downloaded models outside the container
       - olama_models:/root/.ollama
 
-    # Resource limits (tune to your system)
-    # mem_limit: 8g
-    # cpus: "4"
+    networks:
+      - olama_net
 
+  # ── Chat UI ──────────────────────────────────────────────────────────────────
+  # Access at http://localhost:3000
+  # Web search is DISABLED by default — enable it per message with the
+  # web-search toggle button in the chat bar (magnifying glass icon).
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    depends_on:
+      - olama
+      - searxng
+
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+
+    environment:
+      # Point to the Ollama engine
+      - OLLAMA_BASE_URL=http://olama:11434
+
+      # Web search — uses SearXNG internally; user must toggle it on per message
+      - ENABLE_RAG_WEB_SEARCH=true
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>&format=json
+
+      # Disable login for local/home use; set to "true" to require accounts
+      - WEBUI_AUTH=false
+
+    volumes:
+      - open_webui_data:/app/backend/data
+
+    networks:
+      - olama_net
+
+  # ── Web search backend ───────────────────────────────────────────────────────
+  # Private — reachable only by open-webui inside the Docker network.
+  # Queries go out to the internet only when you trigger a web search in the UI.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+
+    # No host port published — SearXNG is internal only
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080
+
+    volumes:
+      # settings.yml enables JSON API responses required by Open WebUI
+      - ./searxng:/etc/searxng
+
+    networks:
+      - olama_net
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
 volumes:
   olama_models:
     driver: local
-    # Optionally bind-mount a host directory instead:
-    # driver_opts:
-    #   type: none
-    #   o: bind
-    #   device: /opt/ollama/models
+  open_webui_data:
+    driver: local
+
+# ── Network ────────────────────────────────────────────────────────────────────
+networks:
+  olama_net:
+    driver: bridge
