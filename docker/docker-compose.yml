@@ -17,9 +17,11 @@ version: "3.9"
 # │    searxng     — Self-hosted search (internal only, no host port)       │
 # │                  config: ${DATA_DIR}/searxng                            │
 # ├─────────────────────────────────────────────────────────────────────────┤
+# ├─────────────────────────────────────────────────────────────────────────┤
 # │  EXPORTABLE DATA  →  everything under DATA_DIR                         │
-# │  LOGS             →  ${DATA_DIR}/logs/<container>.log                  │
-# │                       or: bash scripts/logs.sh export                  │
+# │  LOGS (normal)    →  INFO level — clean, low-noise                     │
+# │  LOGS (debug)     →  bash scripts/logs.sh debug-on  (deep detail)      │
+# │                       bash scripts/logs.sh debug-off (back to normal)  │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
 # Copy .env.example → docker/.env and set DATA_DIR to your storage path.
@@ -63,6 +65,9 @@ services:
 
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
+      # Debug: set OLLAMA_DEBUG=1 in docker/.env (or run: bash scripts/logs.sh debug-on)
+      # Enables verbose GPU selection, model load steps, and token generation traces.
+      - OLLAMA_DEBUG=${OLLAMA_DEBUG:-0}
 
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
@@ -120,7 +125,9 @@ services:
       - RAG_WEB_SEARCH_ENGINE=searxng
       - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>&format=json
 
-      # Logging — write app-level logs at INFO level (use DEBUG for deeper analysis)
+      # Logging — INFO by default; set WEBUI_LOG_LEVEL=DEBUG in docker/.env for
+      # detailed traces of every request, RAG retrieval, embedding, and search call.
+      # Or run: bash scripts/logs.sh debug-on
       - LOG_LEVEL=${WEBUI_LOG_LEVEL:-INFO}
 
       # Auth — set to "true" if you want login-protected accounts
@@ -164,6 +171,9 @@ services:
     # No host port — SearXNG is private to the Docker network
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080
+      # Debug: set SEARXNG_DEBUG=true in docker/.env (or run: bash scripts/logs.sh debug-on)
+      # Enables per-engine request/response traces and result ranking details.
+      - SEARXNG_DEBUG=${SEARXNG_DEBUG:-false}
 
     volumes:
       # ── Search config (exportable) ────────────────────────────────────────
