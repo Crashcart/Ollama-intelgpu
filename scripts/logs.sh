@@ -127,11 +127,21 @@ cmd_status() {
 
   for c in "${CONTAINERS[@]}"; do
     printf '  %-12s  [%s]\n' "$c" "${CATEGORY[$c]}"
+
     if container_running "$c"; then
-      ok "running"
+      # Show Docker health state (healthy / unhealthy / starting / none)
+      local health
+      health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}' "$c" 2>/dev/null || echo "unknown")"
+      case "$health" in
+        healthy)        ok "running — $health" ;;
+        starting)       info "running — $health (waiting for healthcheck)" ;;
+        unhealthy)      err "running — $health  ← check logs: bash scripts/logs.sh errors $c" ;;
+        *)              warn "running — $health" ;;
+      esac
     else
       warn "stopped / not found"
     fi
+
     printf '  data path : %s\n' "${DATA_PATH[$c]}"
     if [[ -d "${DATA_PATH[$c]}" ]]; then
       printf '  disk used : %s\n' "$(du -sh "${DATA_PATH[$c]}" 2>/dev/null | cut -f1)"
@@ -139,15 +149,9 @@ cmd_status() {
 
     # Per-container debug detail
     case "$c" in
-      olama)
-        printf '  log level : OLLAMA_DEBUG=%s\n' "$ollama_debug"
-        ;;
-      open-webui)
-        printf '  log level : WEBUI_LOG_LEVEL=%s\n' "$webui_log"
-        ;;
-      searxng)
-        printf '  log level : SEARXNG_DEBUG=%s\n' "$searxng_debug"
-        ;;
+      olama)      printf '  log level : OLLAMA_DEBUG=%s\n'    "$ollama_debug" ;;
+      open-webui) printf '  log level : WEBUI_LOG_LEVEL=%s\n' "$webui_log" ;;
+      searxng)    printf '  log level : SEARXNG_DEBUG=%s\n'   "$searxng_debug" ;;
     esac
     sep
   done

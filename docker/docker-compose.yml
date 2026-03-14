@@ -78,6 +78,16 @@ services:
       # copied/moved to another machine without re-downloading.
       - ${DATA_DIR:-/opt/olama}/models:/root/.ollama
 
+    # Checks the Ollama HTTP API — visible as healthy/unhealthy in Portainer,
+    # Dockge, Yacht, and any other Docker manager that reads healthcheck state.
+    # start_period gives the engine time to initialise before failures count.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
     logging:
       driver: json-file
       options:
@@ -103,9 +113,13 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
+    # Wait for olama and searxng to pass their health checks before starting.
+    # This prevents the UI from coming up before the backend is actually ready.
     depends_on:
-      - olama
-      - searxng
+      olama:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
 
     labels:
       com.olama.category: "interface"
@@ -136,6 +150,14 @@ services:
     volumes:
       # ── Chat history, RAG docs, embeddings, settings (exportable) ─────────
       - ${DATA_DIR:-/opt/olama}/webui:/app/backend/data
+
+    # Falls back to wget if curl is not present in the image.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || wget -qO/dev/null http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
     logging:
       driver: json-file
@@ -179,6 +201,14 @@ services:
       # ── Search config (exportable) ────────────────────────────────────────
       # Copy docker/searxng/settings.yml here on first run (see README).
       - ${DATA_DIR:-/opt/olama}/searxng:/etc/searxng
+
+    # SearXNG runs on Alpine (busybox wget, no curl by default).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
     logging:
       driver: json-file
