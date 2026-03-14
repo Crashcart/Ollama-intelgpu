@@ -17,6 +17,11 @@ version: "3.9"
 # │    searxng     — Self-hosted search (internal only, no host port)       │
 # │                  config: ${DATA_DIR}/searxng                            │
 # ├─────────────────────────────────────────────────────────────────────────┤
+# │  CATEGORY: PIPELINES                                                    │
+# │    pipelines   — Open WebUI tool/function runtime (internal only)       │
+# │                  data: ${DATA_DIR}/pipelines  (drop .py files to add)   │
+# │                  Enables: tools, code exec, custom functions, filters,  │
+# │                            rate limiting, usage monitoring               │
 # ├─────────────────────────────────────────────────────────────────────────┤
 # │  EXPORTABLE DATA  →  everything under DATA_DIR                         │
 # │  LOGS (normal)    →  INFO level — clean, low-noise                     │
@@ -134,12 +139,14 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
-    # Wait for olama and searxng to pass their health checks before starting.
-    # This prevents the UI from coming up before the backend is actually ready.
+    # Wait for all backends to pass their health checks before starting.
+    # This prevents the UI from coming up before its dependencies are ready.
     depends_on:
       olama:
         condition: service_healthy
       searxng:
+        condition: service_healthy
+      pipelines:
         condition: service_healthy
 
     labels:
@@ -152,20 +159,62 @@ services:
       - "${WEBUI_PORT:-3000}:8080"
 
     environment:
-      # LLM engine
+      # ── LLM engine ───────────────────────────────────────────────────────
       - OLLAMA_BASE_URL=http://olama:11434
 
-      # Web search — SearXNG backend; off by default, user toggles per message
+      # ── Pipelines — tools, functions, code execution, custom filters ─────
+      # Connects to the pipelines container as an OpenAI-compatible endpoint.
+      # Drop any .py pipeline file into ${DATA_DIR}/pipelines to add new tools.
+      # Manage active pipelines in Open WebUI: Admin → Settings → Pipelines.
+      - ENABLE_OPENAI_API=true
+      - OPENAI_API_BASE_URLS=http://pipelines:9099
+      - OPENAI_API_KEYS=${PIPELINES_API_KEY:-0p3n-w3bu!}
+
+      # ── RAG — document Q&A (PDF, DOCX, TXT, URLs) ────────────────────────
+      # Upload documents in any chat via the paperclip icon. Open WebUI chunks
+      # them, embeds them locally, and retrieves relevant context automatically.
+      # Enable URL/web-page ingestion so users can paste links as context.
+      - ENABLE_RAG_LOCAL_WEB_FETCH=true
+      # Extract images from PDFs so vision-capable models can read charts/diagrams.
+      - PDF_EXTRACT_IMAGES=true
+      # Chunk sizes — increase CHUNK_SIZE for long-form docs, lower for precision.
+      - CHUNK_SIZE=${CHUNK_SIZE:-1500}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-100}
+
+      # ── Web search — SearXNG backend ──────────────────────────────────────
+      # Off by default — user toggles per message via the search icon.
       - ENABLE_RAG_WEB_SEARCH=true
       - RAG_WEB_SEARCH_ENGINE=searxng
       - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>&format=json
 
-      # Logging — INFO by default; set WEBUI_LOG_LEVEL=DEBUG in docker/.env for
-      # detailed traces of every request, RAG retrieval, embedding, and search call.
+      # ── Audio — Speech-to-Text (microphone → text) ────────────────────────
+      # Uses faster-whisper running inside the Open WebUI container — no extra
+      # service needed.  Click the microphone icon in the chat bar to speak.
+      # Models: tiny (fastest) | base | small | medium | large (most accurate)
+      - AUDIO_STT_ENGINE=${AUDIO_STT_ENGINE:-whisper}
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+
+      # ── Audio — Text-to-Speech (text → voice) ─────────────────────────────
+      # Empty = browser-native TTS (no setup, lower quality).
+      # Set to "openai" to use the Kokoro TTS pipeline (add the pipeline first).
+      - AUDIO_TTS_ENGINE=${AUDIO_TTS_ENGINE:-}
+
+      # ── Image generation ──────────────────────────────────────────────────
+      # Disabled by default. To enable, add an AUTOMATIC1111 or ComfyUI service
+      # to this compose file, then set ENABLE_IMAGE_GENERATION=true in docker/.env.
+      # Generates images from the chat bar (camera icon appears when enabled).
+      - ENABLE_IMAGE_GENERATION=${ENABLE_IMAGE_GENERATION:-false}
+      - IMAGE_GENERATION_ENGINE=${IMAGE_GENERATION_ENGINE:-automatic1111}
+      - AUTOMATIC1111_BASE_URL=${AUTOMATIC1111_BASE_URL:-http://automatic1111:7860}
+
+      # ── Logging ───────────────────────────────────────────────────────────
+      # INFO by default; set WEBUI_LOG_LEVEL=DEBUG in docker/.env for detailed
+      # traces of every request, RAG retrieval, embedding, and search call.
       # Or run: bash scripts/logs.sh debug-on
       - LOG_LEVEL=${WEBUI_LOG_LEVEL:-INFO}
 
-      # Auth — set to "true" if you want login-protected accounts
+      # ── Auth ──────────────────────────────────────────────────────────────
+      # Set to "true" to enable login-protected accounts (multi-user).
       - WEBUI_AUTH=false
 
     volumes:
@@ -237,6 +286,60 @@ services:
         max-size: "${LOG_MAX_SIZE:-10m}"
         max-file: "${LOG_MAX_FILES:-5}"
         tag: "searxng"
+
+    networks:
+      - olama_net
+
+# =============================================================================
+#  CATEGORY: PIPELINES
+#  Purpose : Python function/tool runtime for Open WebUI.  Appears in the UI
+#            as an additional model provider — pipelines show up alongside
+#            Ollama models and can intercept, transform, or augment requests.
+#  Enables : custom tools, code execution, web scraping, rate limiting,
+#            usage monitoring, filter pipelines, function calling, and more.
+#  Add     : drop any .py pipeline file into ${DATA_DIR}/pipelines/
+#            then reload in Open WebUI: Admin → Settings → Pipelines
+#  Port    : internal only (9099) — Open WebUI connects via OPENAI_API_BASE_URLS
+#  Data    : ${DATA_DIR}/pipelines — pipeline scripts, small but critical
+# =============================================================================
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    container_name: pipelines
+    restart: unless-stopped
+
+    labels:
+      com.olama.category: "pipelines"
+      com.olama.description: "Open WebUI function and tool runtime"
+      com.olama.data: "${DATA_DIR:-/opt/olama}/pipelines"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/pipelines.log"
+
+    environment:
+      # Key must match OPENAI_API_KEYS in open-webui — set both in docker/.env
+      - PIPELINES_API_KEY=${PIPELINES_API_KEY:-0p3n-w3bu!}
+
+    volumes:
+      # ── Pipeline scripts (exportable) ─────────────────────────────────────
+      # Drop any .py pipeline file here to make it available in Open WebUI.
+      # Built-in examples: https://github.com/open-webui/pipelines/tree/main/examples
+      - ${DATA_DIR:-/opt/olama}/pipelines:/app/pipelines
+
+    # No host port — pipelines is private to the Docker network.
+    # Open WebUI connects to it via http://pipelines:9099 (OPENAI_API_BASE_URLS).
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9099/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "pipelines"
 
     networks:
       - olama_net

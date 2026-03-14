@@ -58,8 +58,13 @@ if ! ls /dev/dri/renderD* &>/dev/null; then
 fi
 
 # ── Setup directories ─────────────────────────────────────────────────────────
-info "Creating data directory: ${OLLAMA_DATA_DIR}"
-sudo mkdir -p "${OLLAMA_DATA_DIR}/models"
+info "Creating data directories: ${OLLAMA_DATA_DIR}"
+sudo mkdir -p \
+  "${OLLAMA_DATA_DIR}/models" \
+  "${OLLAMA_DATA_DIR}/webui" \
+  "${OLLAMA_DATA_DIR}/searxng" \
+  "${OLLAMA_DATA_DIR}/pipelines" \
+  "${OLLAMA_DATA_DIR}/logs"
 sudo chown -R "$USER:$USER" "${OLLAMA_DATA_DIR}" 2>/dev/null || true
 
 # ── Write docker-compose.yml ──────────────────────────────────────────────────
