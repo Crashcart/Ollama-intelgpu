@@ -59,6 +59,7 @@ _set_env() {
 }
 
 DATA_DIR="$(_read_env DATA_DIR /opt/olama)"
+DOZZLE_PORT="$(_read_env DOZZLE_PORT 9999)"
 LOG_DIR="${DATA_DIR}/logs"
 CONTAINERS=(olama open-webui searxng pipelines)
 
@@ -162,7 +163,8 @@ cmd_status() {
 
   printf '\nLog rotation  : max-size=%s  max-files=%s\n' "$log_max_size" "$log_max_files"
   printf 'Log export dir: %s\n' "$LOG_DIR"
-  printf '\nToggle debug  : bash scripts/logs.sh debug-on | debug-off\n'
+  printf '\nWeb log viewer: http://localhost:%s  (Dozzle — live logs in browser)\n' "$DOZZLE_PORT"
+  printf 'Toggle debug  : bash scripts/logs.sh debug-on | debug-off\n'
 }
 
 # ---------------------------------------------------------------------------

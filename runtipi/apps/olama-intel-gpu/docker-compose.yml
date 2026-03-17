@@ -21,6 +21,9 @@ services:
     container_name: olama-intel-gpu
     restart: unless-stopped
 
+    labels:
+      com.olama.category: "ai-core"
+
     # Intel GPU device passthrough (Arc / Iris Xe / integrated)
     devices:
       - /dev/dri:/dev/dri
@@ -56,6 +59,9 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: olama-intel-gpu-webui
     restart: unless-stopped
+
+    labels:
+      com.olama.category: "interface"
     depends_on:
       olama-intel-gpu:
         condition: service_healthy
@@ -130,6 +136,9 @@ services:
     container_name: olama-intel-gpu-searxng
     restart: unless-stopped
 
+    labels:
+      com.olama.category: "search"
+
     environment:
       - SEARXNG_BASE_URL=http://olama-intel-gpu-searxng:8080
       - SEARXNG_DEBUG=false
@@ -155,6 +164,9 @@ services:
     container_name: olama-intel-gpu-pipelines
     restart: unless-stopped
 
+    labels:
+      com.olama.category: "pipelines"
+
     environment:
       - PIPELINES_API_KEY=${PIPELINES_API_KEY:-0p3n-w3bu!}
 
@@ -167,6 +179,36 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+    networks:
+      - tipi_main_network
+
+  olama-intel-gpu-dozzle:
+    image: amir20/dozzle:latest
+    container_name: olama-intel-gpu-dozzle
+    restart: unless-stopped
+
+    labels:
+      com.olama.category: "logs"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    environment:
+      # Show only this stack's containers
+      - DOZZLE_FILTER=label=com.olama.category
+      - DOZZLE_HOSTNAME=olama-intel-gpu
+      - DOZZLE_NO_ANALYTICS=true
+
+    ports:
+      - "${DOZZLE_PORT:-9999}:8080"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
     networks:
       - tipi_main_network

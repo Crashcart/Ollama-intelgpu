@@ -28,6 +28,16 @@
       "required": false
     },
     {
+      "type": "number",
+      "label": "Log viewer port (Dozzle)",
+      "hint": "Host port for the Dozzle web log viewer. Open http://<host>:<port> to see live logs from all containers.",
+      "env_variable": "DOZZLE_PORT",
+      "default": 9999,
+      "min": 1024,
+      "max": 65535,
+      "required": false
+    },
+    {
       "type": "text",
       "label": "Default model for new chats",
       "hint": "Pre-selects this model in new conversations. Must match a pulled model name. Leave empty to let users pick.",

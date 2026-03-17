@@ -29,6 +29,7 @@ OLLAMA_VERSION="${OLLAMA_VERSION:-latest}"
 REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 # Branch is auto-detected below; override with --branch or the REPO_BRANCH env var.
 REPO_BRANCH="${REPO_BRANCH:-}"
+DOZZLE_PORT="${DOZZLE_PORT:-9999}"
 COMPOSE_PROJECT="olama"
 
 # ── Color helpers ──────────────────────────────────────────────────────────────
@@ -237,6 +238,7 @@ success "Olama stack is running!"
 echo
 echo "  Chat UI     :  http://localhost:${WEBUI_PORT}"
 echo "  Ollama API  :  http://localhost:${OLLAMA_PORT}"
+echo "  Log viewer  :  http://localhost:${DOZZLE_PORT}  (Dozzle — live logs for all containers)"
 echo
 echo "  Manage      :  cd ${INSTALL_DIR}"
 echo "  View logs   :  bash ${INSTALL_DIR}/scripts/logs.sh"

@@ -369,6 +369,57 @@ services:
       - olama_net
 
 # =============================================================================
+#  CATEGORY: LOGS
+#  Purpose : Real-time web log viewer for all stack containers.
+#            Open http://localhost:9999 in your browser to see live logs,
+#            search across containers, and filter by level — no CLI needed.
+#            Read-only: Dozzle can only view logs, not modify containers.
+#  Port    : 9999 → http://localhost:9999
+# =============================================================================
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: olama-dozzle
+    restart: unless-stopped
+
+    labels:
+      com.olama.category: "logs"
+      com.olama.description: "Dozzle real-time web log viewer"
+      com.olama.data: "none"
+      com.olama.log: "none"
+
+    # Read-only access to Docker socket — Dozzle only reads logs, never writes
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    environment:
+      # Show only this stack's containers (all have the com.olama.category label)
+      - DOZZLE_FILTER=label=com.olama.category
+      # Name shown in the Dozzle browser tab
+      - DOZZLE_HOSTNAME=olama
+      - DOZZLE_NO_ANALYTICS=true
+
+    ports:
+      - "${DOZZLE_PORT:-9999}:8080"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+        tag: "dozzle"
+
+    networks:
+      - olama_net
+
+# =============================================================================
 #  NETWORK
 # =============================================================================
 
@@ -376,4 +427,4 @@ networks:
   olama_net:
     driver: bridge
     labels:
-      com.olama.description: "Internal network — olama, open-webui, searxng, pipelines"
+      com.olama.description: "Internal network — olama, open-webui, searxng, pipelines, dozzle"

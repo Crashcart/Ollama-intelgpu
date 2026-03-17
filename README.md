@@ -15,10 +15,13 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 | `open-webui` | **Interface** | Browser chat UI connected to the AI | `3000` |
 | `searxng` | **Search** | Self-hosted web search backend | internal only |
 | `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
+| `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
 
 **Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
 
 **Pipelines** adds custom tools, code execution, filters, rate limiting, and usage monitoring to Open WebUI. Drop any `.py` pipeline file into `${DATA_DIR}/pipelines/` to add new capabilities.
+
+**Dozzle** provides a real-time web log viewer at **http://localhost:9999** — open it in your browser to see live logs from all containers without using the CLI.
 
 All data is stored under a single configurable `DATA_DIR` on the host — no anonymous Docker volumes — so everything is exportable by simply copying that directory.
 
@@ -342,6 +345,29 @@ To add Olama to a self-hosted [Runtipi](https://runtipi.io) instance:
 Copy `runtipi/apps/olama-intel-gpu/` into your Runtipi `apps/` directory and refresh the store.
 
 > **Before clicking Install:** SearXNG needs its config file placed at `<APP_DATA_DIR>/data/searxng/settings.yml`. See the app description in Runtipi for the exact `curl` command to place it.
+
+---
+
+## Log Viewer — Web UI (Dozzle)
+
+Open **http://localhost:9999** in your browser for a real-time view of all container logs — no CLI required.
+
+Dozzle shows live, color-coded log streams for `olama`, `open-webui`, `searxng`, and `pipelines` in one tab. Use it to:
+
+- Watch what's happening in real time as you chat or pull a model
+- Search and filter log output across all containers at once
+- Copy log output to share when reporting an issue
+
+**Dozzle is read-only** — it can only view logs, not control containers.
+
+If you need to share logs for a bug report, open Dozzle, reproduce the issue, and paste the relevant output.
+
+To change the port:
+
+```bash
+# In docker/.env
+DOZZLE_PORT=9999
+```
 
 ---
 
