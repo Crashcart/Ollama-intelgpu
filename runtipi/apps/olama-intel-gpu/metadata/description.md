@@ -10,6 +10,7 @@ A complete, self-hosted AI stack purpose-built for **Intel Arc, Iris Xe, and int
 | **Open WebUI** | Browser-based chat interface at your configured port |
 | **SearXNG** | Private web search engine (internal, no exposed port) |
 | **Pipelines** | Python function/tool runtime for custom tools and code execution |
+| **Dozzle** | Real-time web log viewer for all containers (port 9999 by default) |
 
 ### Full capability list
 
@@ -23,6 +24,7 @@ A complete, self-hosted AI stack purpose-built for **Intel Arc, Iris Xe, and int
 - **Voice Output (TTS)** — Click the speaker icon to hear responses read aloud (browser-native, or Kokoro pipeline for higher quality)
 - **Image Generation** — Disabled by default; enable when you add a Stable Diffusion (AUTOMATIC1111 or ComfyUI) service
 - **Pipelines** — Drop Python scripts into the pipelines directory to add custom tools, filters, rate limiting, usage monitoring, and code execution
+- **Log Viewer** — Open `http://<host>:9999` to see live, color-coded logs from all containers in your browser — no CLI needed
 - **Modelfiles** — Create custom model personas with system prompts and parameters from the UI
 - **Prompt Presets** — Save and share conversation templates
 - **Arena Mode** — Compare two models side by side on the same prompt

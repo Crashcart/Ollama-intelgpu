@@ -394,7 +394,7 @@ docker exec olama ollama run mistral "hello" 2>&1 | grep -i intel || true
 Olama-intelgpu/
 ├── docker/
 │   ├── Dockerfile               # Builds Ollama + Intel oneAPI GPU drivers
-│   ├── docker-compose.yml       # Full stack: olama + open-webui + searxng + pipelines
+│   ├── docker-compose.yml       # Full stack: olama + open-webui + searxng + pipelines + dozzle
 │   └── searxng/
 │       └── settings.yml         # SearXNG config (auto-mounted read-only into container)
 ├── scripts/
