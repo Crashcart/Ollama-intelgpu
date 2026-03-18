@@ -32,14 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clinfo \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Ollama from GitHub releases (ollama.com/install.sh uses a broken CDN URL)
-RUN VER="${OLLAMA_VERSION}"; \
-    if [ "${VER}" = "latest" ]; then \
-      VER=$(curl -fsSL https://api.github.com/repos/ollama/ollama/releases/latest \
-            | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'); \
+# Install Ollama from GitHub releases (use /latest/download/ redirect, no API call needed)
+RUN if [ "${OLLAMA_VERSION}" = "latest" ]; then \
+      curl -fsSL "https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64.tgz" \
+           -o /tmp/ollama.tgz; \
+    else \
+      curl -fsSL "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tgz" \
+           -o /tmp/ollama.tgz; \
     fi \
-    && curl -fsSL "https://github.com/ollama/ollama/releases/download/${VER}/ollama-linux-amd64.tgz" \
-       -o /tmp/ollama.tgz \
     && tar -C /usr/local -xzf /tmp/ollama.tgz \
     && rm /tmp/ollama.tgz
 
