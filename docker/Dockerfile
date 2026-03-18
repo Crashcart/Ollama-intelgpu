@@ -21,15 +21,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Add Intel graphics repository for GPU driver support
 RUN wget -qO- https://repositories.intel.com/gpu/intel-graphics.key \
     | gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg \
-  && echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy client" \
+  && echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy unified" \
     | tee /etc/apt/sources.list.d/intel-gpu-jammy.list
 
 # Install Intel GPU compute runtime (OpenCL + Level Zero)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     intel-opencl-icd \
-    intel-level-zero-gpu \
-    level-zero \
     libze-intel-gpu1 \
+    libze1 \
     clinfo \
     && rm -rf /var/lib/apt/lists/*
 
