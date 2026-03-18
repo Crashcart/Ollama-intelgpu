@@ -47,6 +47,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      network: host          # Use host DNS so Intel GPU repo resolves during build
       args:
         OLLAMA_VERSION: ${OLLAMA_VERSION:-latest}
     image: olama:${OLLAMA_VERSION:-latest}
