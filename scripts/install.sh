@@ -193,13 +193,13 @@ $COMPOSE_CMD build --pull olama
 success "Intel GPU image built."
 
 # ── Pull remaining images ──────────────────────────────────────────────────────
-info "Pulling service images (open-webui, searxng, pipelines)..."
-$COMPOSE_CMD pull open-webui searxng pipelines
+info "Pulling service images (open-webui, searxng, pipelines, dozzle)..."
+$COMPOSE_CMD pull open-webui searxng pipelines dozzle
 success "Images pulled."
 
 # ── Start the full stack ───────────────────────────────────────────────────────
 sep
-info "Starting Olama stack (4 containers)..."
+info "Starting Olama stack (5 containers)..."
 $COMPOSE_CMD up -d
 echo
 
