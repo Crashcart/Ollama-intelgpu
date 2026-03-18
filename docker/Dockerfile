@@ -40,17 +40,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clinfo \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Ollama via the official install script.
-# The script handles version resolution and the correct download URL,
-# making it resilient to future changes in GitHub release file naming.
-# OLLAMA_VERSION="latest" installs the newest release; any semver tag works too.
-# Note: the script attempts to register a systemd service which silently no-ops
-# inside Docker — the binary ends up at /usr/local/bin/ollama regardless.
+# Install Ollama binary from GitHub releases.
+# We download the standalone binary (no .tgz) because:
+#   • Ollama no longer ships ollama-linux-amd64.tgz in recent releases
+#   • Intel GPU acceleration uses Level Zero (installed above via apt),
+#     so no bundled CUDA/ROCm GPU libraries from a tarball are needed
 RUN if [ "${OLLAMA_VERSION}" = "latest" ]; then \
-      curl -fsSL https://ollama.com/install.sh | sh; \
+      OLLAMA_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64"; \
     else \
-      curl -fsSL https://ollama.com/install.sh | OLLAMA_VERSION="${OLLAMA_VERSION}" sh; \
-    fi
+      OLLAMA_URL="https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64"; \
+    fi \
+    && curl -fsSL "${OLLAMA_URL}" -o /usr/local/bin/ollama \
+    && chmod +x /usr/local/bin/ollama
 
 # Create model directory (empty - models pulled at runtime)
 RUN mkdir -p /root/.ollama/models
