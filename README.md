@@ -12,16 +12,16 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 | Container | Category | Purpose | Port |
 |---|---|---|---|
 | `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
-| `open-webui` | **Interface** | Browser chat UI connected to the AI | `3000` |
+| `open-webui` | **Interface** | Browser chat UI connected to the AI | `45213` |
 | `searxng` | **Search** | Self-hosted web search backend | internal only |
 | `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
-| `dozzle` | **Logs** | Real-time web log viewer for all containers | `45213` |
+| `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
 
 **Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
 
 **Pipelines** adds custom tools, code execution, filters, rate limiting, and usage monitoring to Open WebUI. Drop any `.py` pipeline file into `${DATA_DIR}/pipelines/` to add new capabilities.
 
-**Dozzle** provides a real-time web log viewer at **http://localhost:45213** — open it in your browser to see live logs from all containers without using the CLI.
+**Dozzle** provides a real-time web log viewer at **http://localhost:9999** — open it in your browser to see live logs from all containers without using the CLI.
 
 All data is stored under a single configurable `DATA_DIR` on the host — no anonymous Docker volumes — so everything is exportable by simply copying that directory.
 
@@ -81,14 +81,14 @@ docker exec olama ollama pull llama3.2:3b
 
 **Step 3 — Open the chat UI**
 
-Open your browser at **http://localhost:3000** and select the model you just pulled.
+Open your browser at **http://localhost:45213** and select the model you just pulled.
 
 **Optional — Custom install options**
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh) \
   --port 11434 \
-  --webui-port 3000 \
+  --webui-port 45213 \
   --data-dir /opt/olama \
   --version latest
 ```
@@ -99,7 +99,7 @@ Available flags:
 |---|---|---|
 | `--data-dir DIR` | `/opt/olama` | Where to store models, chat history, logs |
 | `--port PORT` | `11434` | Host port for the Ollama API |
-| `--webui-port PORT` | `3000` | Host port for the Open WebUI chat UI |
+| `--webui-port PORT` | `45213` | Host port for the Open WebUI chat UI |
 | `--version TAG` | `latest` | Ollama image tag |
 | `--branch NAME` | auto-detected | Git branch to clone (auto-tries `main` → `master`) |
 
@@ -129,7 +129,7 @@ Open `docker/.env`. At minimum, set `DATA_DIR` to wherever you have enough space
 DATA_DIR=/opt/olama
 
 OLLAMA_PORT=11434
-WEBUI_PORT=3000
+WEBUI_PORT=45213
 ```
 
 Then create the data directories:
@@ -167,7 +167,7 @@ bash scripts/pull-model.sh
 
 **Step 5 — Open the chat UI**
 
-Open your browser at **http://localhost:3000** and select the model you just pulled.
+Open your browser at **http://localhost:45213** and select the model you just pulled.
 
 **Step 6 — Enable web search (when you want it)**
 
@@ -359,7 +359,7 @@ Copy `runtipi/apps/olama-intel-gpu/` into your Runtipi `apps/` directory and ref
 
 ## Log Viewer — Web UI (Dozzle)
 
-Open **http://localhost:45213** in your browser for a real-time view of all container logs — no CLI required.
+Open **http://localhost:9999** in your browser for a real-time view of all container logs — no CLI required.
 
 Dozzle shows live, color-coded log streams for `olama`, `open-webui`, `searxng`, and `pipelines` in one tab. Use it to:
 
@@ -375,7 +375,7 @@ To change the port:
 
 ```bash
 # In docker/.env
-DOZZLE_PORT=45213
+DOZZLE_PORT=9999
 ```
 
 ---

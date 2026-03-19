@@ -5,7 +5,7 @@
   "available": true,
   "short_desc": "Ollama LLM stack for Intel GPUs — Chat UI, web search, voice, RAG, pipelines",
   "author": "Crashcart",
-  "port": 3000,
+  "port": 45213,
   "categories": ["ai"],
   "description": "",
   "tipiVersion": 2,
@@ -32,7 +32,7 @@
       "label": "Log viewer port (Dozzle)",
       "hint": "Host port for the Dozzle web log viewer. Open http://<host>:<port> to see live logs from all containers.",
       "env_variable": "DOZZLE_PORT",
-      "default": 45213,
+      "default": 9999,
       "min": 1024,
       "max": 65535,
       "required": false
