@@ -201,7 +201,7 @@ services:
       - DOZZLE_NO_ANALYTICS=true
 
     ports:
-      - "${DOZZLE_PORT:-9999}:8080"
+      - "${DOZZLE_PORT:-45213}:8080"
 
     healthcheck:
       test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/healthcheck || exit 1"]

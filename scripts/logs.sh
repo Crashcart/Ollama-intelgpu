@@ -59,7 +59,7 @@ _set_env() {
 }
 
 DATA_DIR="$(_read_env DATA_DIR /opt/olama)"
-DOZZLE_PORT="$(_read_env DOZZLE_PORT 9999)"
+DOZZLE_PORT="$(_read_env DOZZLE_PORT 45213)"
 LOG_DIR="${DATA_DIR}/logs"
 CONTAINERS=(olama open-webui searxng pipelines)
 

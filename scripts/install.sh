@@ -42,7 +42,7 @@ OLLAMA_VERSION="${OLLAMA_VERSION:-latest}"
 REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 # Branch is auto-detected below; override with --branch or the REPO_BRANCH env var.
 REPO_BRANCH="${REPO_BRANCH:-}"
-DOZZLE_PORT="${DOZZLE_PORT:-9999}"
+DOZZLE_PORT="${DOZZLE_PORT:-45213}"
 COMPOSE_PROJECT="olama"
 
 # ── Color helpers ──────────────────────────────────────────────────────────────
