@@ -21,6 +21,19 @@
 
 set -euo pipefail
 
+# ── Survive terminal disconnect; capture all output ───────────────────────────
+# SIGHUP is sent when the controlling terminal (SSH session, etc.) closes.
+# Ignoring it lets the script keep running.  Docker builds already run inside
+# the daemon and continue regardless; this ensures the post-build steps
+# (image pulls, container start, health-checks) also survive a disconnect.
+#
+# All stdout + stderr are mirrored to LOG_FILE from this point forward.
+# If the install fails the file can be reviewed or posted for support.
+LOG_FILE="${LOG_FILE:-/tmp/olama-install.log}"
+touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/olama-install-$(id -u).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+trap '' HUP   # ignore terminal-disconnect signal
+
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DATA_DIR="${DATA_DIR:-/opt/olama}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
@@ -37,7 +50,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC
 info()    { echo -e "${CYAN}[olama]${NC} $*"; }
 success() { echo -e "${GREEN}[olama]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[olama]${NC} $*"; }
-error()   { echo -e "${RED}[olama]${NC} $*" >&2; exit 1; }
+error()   { echo -e "${RED}[olama]${NC} $*" >&2; echo -e "${RED}[olama]${NC} Full install log: ${LOG_FILE}" >&2; exit 1; }
 sep()     { echo "──────────────────────────────────────────────────────"; }
 
 # ── Argument parsing ───────────────────────────────────────────────────────────
@@ -62,6 +75,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Preflight checks ──────────────────────────────────────────────────────────
+sep
+info "Install log  : ${LOG_FILE}"
+info "             → tail -f ${LOG_FILE}  (safe to close terminal)"
 sep
 info "Checking prerequisites..."
 
