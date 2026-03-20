@@ -60,8 +60,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # when present — not required for Intel GPU (drivers come from apt above)
 # but included so the image stays compatible with CPU-only fallback.
 RUN --mount=type=bind,from=ollama-bin,source=/,target=/ollama-src \
-    OLLAMA_BIN=$(find /ollama-src/bin /ollama-src/usr/local/bin \
-                      -maxdepth 1 -name ollama -type f 2>/dev/null | head -1) \
+    OLLAMA_BIN=$(find /ollama-src -name ollama -maxdepth 6 \
+                      \( -type f -o -type l \) 2>/dev/null | head -1) \
     && if [ -z "${OLLAMA_BIN}" ]; then \
          echo "ERROR: ollama binary not found in official image" >&2; exit 1; \
        fi \
