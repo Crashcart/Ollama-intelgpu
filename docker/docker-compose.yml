@@ -8,7 +8,7 @@
 # │                  data: ${DATA_DIR}/models   (can grow to 100+ GB)       │
 # ├─────────────────────────────────────────────────────────────────────────┤
 # │  CATEGORY: INTERFACE                                                    │
-# │    open-webui  — Browser chat UI connected to olama    (port 3000)      │
+# │    open-webui  — Browser chat UI connected to olama    (port 45213)      │
 # │                  data: ${DATA_DIR}/webui    (chat history, docs, RAG)   │
 # ├─────────────────────────────────────────────────────────────────────────┤
 # │  CATEGORY: SEARCH                                                       │
@@ -128,7 +128,7 @@ services:
 #  Purpose : Browser-based chat UI; manages conversations, RAG documents,
 #            and user settings. Web search is OFF by default — enable per
 #            message via the magnifying glass toggle in the chat bar.
-#  Port    : 3000 → http://localhost:3000
+#  Port    : 45213 → http://localhost:45213
 #  Data    : ${DATA_DIR}/webui — contains SQLite DB (chat history, users),
 #            ChromaDB vector store (RAG embeddings), uploaded documents.
 #            Back up or rsync this directory to export everything.
@@ -155,7 +155,7 @@ services:
       com.olama.log: "${DATA_DIR:-/opt/olama}/logs/webui.log"
 
     ports:
-      - "${WEBUI_PORT:-3000}:8080"
+      - "${WEBUI_PORT:-45213}:8080"
 
     environment:
       # ── LLM engine ───────────────────────────────────────────────────────

@@ -14,7 +14,7 @@
 # Options:
 #   --data-dir  DIR   Where to store models, chat history, config (default: /opt/olama)
 #   --port      PORT  Host port for the Ollama API              (default: 11434)
-#   --webui-port PORT Host port for the Open WebUI chat UI      (default: 3000)
+#   --webui-port PORT Host port for the Open WebUI chat UI      (default: 45213)
 #   --version   TAG   Ollama version tag                        (default: latest)
 #   --branch    NAME  Git branch to clone when running via curl (auto-detected if omitted)
 # =============================================================================
@@ -37,7 +37,7 @@ trap '' HUP   # ignore terminal-disconnect signal
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DATA_DIR="${DATA_DIR:-/opt/olama}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
-WEBUI_PORT="${WEBUI_PORT:-3000}"
+WEBUI_PORT="${WEBUI_PORT:-45213}"
 OLLAMA_VERSION="${OLLAMA_VERSION:-latest}"
 REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 # Branch is auto-detected below; override with --branch or the REPO_BRANCH env var.
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
       echo
       echo "  --data-dir   DIR   Storage root for models, chat history, config (default: /opt/olama)"
       echo "  --port       PORT  Host port for Ollama API   (default: 11434)"
-      echo "  --webui-port PORT  Host port for Open WebUI   (default: 3000)"
+      echo "  --webui-port PORT  Host port for Open WebUI   (default: 45213)"
       echo "  --version    TAG   Ollama image tag           (default: latest)"
       echo "  --branch     NAME  Git branch for curl install (default: main)"
       exit 0 ;;

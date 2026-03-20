@@ -12,7 +12,7 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 | Container | Category | Purpose | Port |
 |---|---|---|---|
 | `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
-| `open-webui` | **Interface** | Browser chat UI connected to the AI | `3000` |
+| `open-webui` | **Interface** | Browser chat UI connected to the AI | `45213` |
 | `searxng` | **Search** | Self-hosted web search backend | internal only |
 | `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
 | `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
@@ -40,7 +40,7 @@ Before installing, make sure you have:
 
 ## Method 1 — One-Command Installer
 
-The fastest way to get the full stack running. The script clones the repo, builds the Intel GPU image, creates the data directories, writes a `.env`, and starts all 4 containers.
+The fastest way to get the full stack running. The script clones the repo, builds the Intel GPU image, creates the data directories, writes a `.env`, and starts all 5 containers. Safe to run over SSH — closing the terminal will not stop the install.
 
 **Step 1 — Run the installer**
 
@@ -53,9 +53,18 @@ The installer will:
 2. Warn if no Intel GPU render node (`/dev/dri/renderD*`) is found
 3. Clone the repo to `/opt/olama-stack/`
 4. Create data directories under `/opt/olama/` (models, webui, searxng, pipelines, logs)
-5. Build the Ollama Intel GPU image (~5 min on first run — downloads Intel oneAPI drivers)
-6. Pull the `open-webui`, `searxng`, and `pipelines` images
-7. Start all 4 containers and wait until Ollama and Open WebUI are ready
+5. Build the Ollama Intel GPU image (~5 min on first run — pulls Ollama from Docker Hub and installs Intel oneAPI drivers)
+6. Pull the `open-webui`, `searxng`, `pipelines`, and `dozzle` images
+7. Start all 5 containers and wait until Ollama and Open WebUI are ready
+
+**The installer is safe to run over SSH — closing the terminal will not interrupt it.**
+All output is logged to `/tmp/olama-install.log`. To follow progress from another session:
+
+```bash
+tail -f /tmp/olama-install.log
+```
+
+If the install fails, the full log is printed in the error message. You can override the log path with `LOG_FILE=/path/to/install.log bash scripts/install.sh`.
 
 **Step 2 — Pull a model**
 
@@ -72,14 +81,14 @@ docker exec olama ollama pull llama3.2:3b
 
 **Step 3 — Open the chat UI**
 
-Open your browser at **http://localhost:3000** and select the model you just pulled.
+Open your browser at **http://localhost:45213** and select the model you just pulled.
 
 **Optional — Custom install options**
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh) \
   --port 11434 \
-  --webui-port 3000 \
+  --webui-port 45213 \
   --data-dir /opt/olama \
   --version latest
 ```
@@ -90,7 +99,7 @@ Available flags:
 |---|---|---|
 | `--data-dir DIR` | `/opt/olama` | Where to store models, chat history, logs |
 | `--port PORT` | `11434` | Host port for the Ollama API |
-| `--webui-port PORT` | `3000` | Host port for the Open WebUI chat UI |
+| `--webui-port PORT` | `45213` | Host port for the Open WebUI chat UI |
 | `--version TAG` | `latest` | Ollama image tag |
 | `--branch NAME` | auto-detected | Git branch to clone (auto-tries `main` → `master`) |
 
@@ -120,7 +129,7 @@ Open `docker/.env`. At minimum, set `DATA_DIR` to wherever you have enough space
 DATA_DIR=/opt/olama
 
 OLLAMA_PORT=11434
-WEBUI_PORT=3000
+WEBUI_PORT=45213
 ```
 
 Then create the data directories:
@@ -158,7 +167,7 @@ bash scripts/pull-model.sh
 
 **Step 5 — Open the chat UI**
 
-Open your browser at **http://localhost:3000** and select the model you just pulled.
+Open your browser at **http://localhost:45213** and select the model you just pulled.
 
 **Step 6 — Enable web search (when you want it)**
 
@@ -393,7 +402,7 @@ docker exec olama ollama run mistral "hello" 2>&1 | grep -i intel || true
 ```
 Olama-intelgpu/
 ├── docker/
-│   ├── Dockerfile               # Builds Ollama + Intel oneAPI GPU drivers
+│   ├── Dockerfile               # Multi-stage: copies Ollama binary from Docker Hub, installs Intel oneAPI GPU drivers
 │   ├── docker-compose.yml       # Full stack: olama + open-webui + searxng + pipelines + dozzle
 │   └── searxng/
 │       └── settings.yml         # SearXNG config (auto-mounted read-only into container)
