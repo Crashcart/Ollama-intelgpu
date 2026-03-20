@@ -255,6 +255,53 @@ _stamp_env "$ENV_FILE" \
 success ".env ready at ${ENV_FILE}"
 info "Review and adjust ${ENV_FILE} at any time — then run: docker compose up -d"
 
+# ── Open firewall ports for LAN access ───────────────────────────────────────
+# Docker binds to 0.0.0.0 (all interfaces) so remote machines can reach the
+# ports at the network level — but most Linux distros block them by default
+# with ufw or firewalld.  Open just the three host-facing ports so other
+# devices on the same network can connect.
+sep
+info "Checking host firewall for LAN access..."
+_fw_ports=("${WEBUI_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}")
+_fw_labels=("Open WebUI (chat)" "Ollama API" "Dozzle (logs)")
+_fw_opened=()
+
+if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+  info "ufw is active — opening ports..."
+  for i in "${!_fw_ports[@]}"; do
+    p="${_fw_ports[$i]}"
+    if ! ufw status | grep -qE "^${p}[/ ]"; then
+      ufw allow "${p}/tcp" comment "olama — ${_fw_labels[$i]}" > /dev/null
+      _fw_opened+=("${p}/tcp (${_fw_labels[$i]})")
+    else
+      info "  Port ${p} already allowed in ufw — skipping."
+    fi
+  done
+  [[ ${#_fw_opened[@]} -gt 0 ]] && \
+    success "ufw: opened ${_fw_opened[*]}" || \
+    success "ufw: all required ports were already open."
+
+elif command -v firewall-cmd &>/dev/null && firewall-cmd --state 2>/dev/null | grep -q "running"; then
+  info "firewalld is active — opening ports..."
+  for i in "${!_fw_ports[@]}"; do
+    p="${_fw_ports[$i]}"
+    if ! firewall-cmd --query-port="${p}/tcp" --permanent &>/dev/null; then
+      firewall-cmd --permanent --add-port="${p}/tcp" > /dev/null
+      _fw_opened+=("${p}/tcp (${_fw_labels[$i]})")
+    else
+      info "  Port ${p} already allowed in firewalld — skipping."
+    fi
+  done
+  [[ ${#_fw_opened[@]} -gt 0 ]] && firewall-cmd --reload > /dev/null
+  [[ ${#_fw_opened[@]} -gt 0 ]] && \
+    success "firewalld: opened ${_fw_opened[*]}" || \
+    success "firewalld: all required ports were already open."
+
+else
+  info "No active ufw or firewalld detected — skipping firewall step."
+  info "If you are running another firewall, allow TCP ports: ${WEBUI_PORT}, ${OLLAMA_PORT}, ${DOZZLE_PORT}"
+fi
+
 # ── Build Intel GPU image ──────────────────────────────────────────────────────
 # COMPOSE_ANSI=never + --progress plain suppress ANSI spinners/color codes so
 # the log file stays readable with `tail -f` or a plain text editor.
@@ -305,12 +352,22 @@ done
 echo
 
 # ── Done ──────────────────────────────────────────────────────────────────────
+# Detect the primary LAN IP for the "access from other devices" hint.
+_lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
+
 sep
 success "Olama stack is running!"
 echo
 echo "  Chat UI     :  http://localhost:${WEBUI_PORT}"
 echo "  Ollama API  :  http://localhost:${OLLAMA_PORT}"
 echo "  Log viewer  :  http://localhost:${DOZZLE_PORT}  (Dozzle — live logs for all containers)"
+if [[ -n "$_lan_ip" ]]; then
+  echo
+  echo "  From other devices on your network:"
+  echo "    Chat UI    →  http://${_lan_ip}:${WEBUI_PORT}"
+  echo "    Ollama API →  http://${_lan_ip}:${OLLAMA_PORT}"
+  echo "    Log viewer →  http://${_lan_ip}:${DOZZLE_PORT}"
+fi
 echo
 echo "  Manage      :  cd ${INSTALL_DIR}"
 echo "  View logs   :  bash ${INSTALL_DIR}/scripts/logs.sh"
