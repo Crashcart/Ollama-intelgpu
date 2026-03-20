@@ -27,12 +27,16 @@ set -euo pipefail
 # the daemon and continue regardless; this ensures the post-build steps
 # (image pulls, container start, health-checks) also survive a disconnect.
 #
+# IMPORTANT: trap '' HUP must be set BEFORE exec > >(tee ...) so that the tee
+# subprocess inherits the ignore disposition.  If tee is forked first, it keeps
+# the default SIGHUP handler and dies on terminal disconnect, breaking the pipe.
+trap '' HUP
+
 # All stdout + stderr are mirrored to LOG_FILE from this point forward.
 # If the install fails the file can be reviewed or posted for support.
 LOG_FILE="${LOG_FILE:-/tmp/olama-install.log}"
 touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/olama-install-$(id -u).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
-trap '' HUP   # ignore terminal-disconnect signal
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DATA_DIR="${DATA_DIR:-/opt/olama}"
@@ -100,6 +104,23 @@ if ! ls /dev/dri/renderD* &>/dev/null; then
   warn "The stack will still run, falling back to CPU inference."
 fi
 
+# ── Sudo keepalive ────────────────────────────────────────────────────────────
+# Prompt for sudo once now, before any background phase, so the script never
+# stalls mid-run waiting for a password (e.g. when creating ${DATA_DIR}).
+# A background loop refreshes the credential every 50 s for the duration of
+# the install; sudo's default cache window is 5-15 min so 50 s is safe.
+# The loop is killed on EXIT via the unified trap below.
+info "Requesting sudo credentials (needed to create ${DATA_DIR})..."
+sudo -v || error "sudo access is required to create data directories"
+( while true; do sudo -n true; sleep 50; kill -0 "$$" 2>/dev/null || exit; done ) &
+_SUDO_KEEPALIVE_PID=$!
+
+# Unified EXIT trap — kills the sudo keepalive and cleans up the temp clone dir
+# (if this is a curl-pipe install).  _CLONE_TEMPDIR is set in the clone section
+# below; it stays empty for local-clone installs so the rm is a no-op.
+_CLONE_TEMPDIR=""
+trap 'kill "$_SUDO_KEEPALIVE_PID" 2>/dev/null; [[ -n "$_CLONE_TEMPDIR" ]] && rm -rf "$_CLONE_TEMPDIR"' EXIT
+
 # ── Locate or clone the repo ──────────────────────────────────────────────────
 # Detect whether we are running from inside a local clone or being piped from
 # curl. When piped, BASH_SOURCE[0] is empty or 'bash', so dirname gives '.'.
@@ -134,7 +155,7 @@ else
 
   info "Cloning ${REPO_GIT} (branch: ${REPO_BRANCH})..."
   CLONE_TEMPDIR="$(mktemp -d)"
-  trap 'rm -rf "$CLONE_TEMPDIR"' EXIT
+  _CLONE_TEMPDIR="$CLONE_TEMPDIR"   # picked up by the unified EXIT trap above
   git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_GIT" "$CLONE_TEMPDIR" \
     || error "Clone failed. Check that the repo is public and branch '${REPO_BRANCH}' exists."
   REPO_ROOT="$CLONE_TEMPDIR"
@@ -202,15 +223,17 @@ else
 fi
 
 # ── Build Intel GPU image ──────────────────────────────────────────────────────
+# COMPOSE_ANSI=never + --progress plain suppress ANSI spinners/color codes so
+# the log file stays readable with `tail -f` or a plain text editor.
 sep
 info "Building Olama Intel GPU image (first run: ~5 min, downloads Intel GPU drivers)..."
 cd "$DOCKER_DIR"
-$COMPOSE_CMD build --pull olama
+COMPOSE_ANSI=never $COMPOSE_CMD build --pull --progress plain olama
 success "Intel GPU image built."
 
 # ── Pull remaining images ──────────────────────────────────────────────────────
 info "Pulling service images (open-webui, searxng, pipelines, dozzle)..."
-$COMPOSE_CMD pull open-webui searxng pipelines dozzle
+COMPOSE_ANSI=never $COMPOSE_CMD pull open-webui searxng pipelines dozzle
 success "Images pulled."
 
 # ── Start the full stack ───────────────────────────────────────────────────────
