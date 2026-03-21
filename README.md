@@ -432,4 +432,111 @@ ${DATA_DIR}/                     # Host storage (default /opt/olama)
 ├── searxng/                     # SearXNG runtime state
 ├── pipelines/                   # Custom tool/function .py scripts
 └── logs/                        # Exported by scripts/logs.sh
+
+---
+
+## Known Issues & Planned Improvements
+
+Items discovered during a full codebase audit. Grouped by severity — address the **Security** items first if the stack is exposed to a LAN or the internet.
+
+---
+
+### Security
+
+**1. Default Pipelines API key is left in source**
+- `PIPELINES_API_KEY=0p3n-w3bu!` is hardcoded in `.env.example` and appears as a fallback default in `docker-compose.yml` (open-webui and pipelines services).
+- If a user skips editing `.env`, both containers run with a well-known public key.
+- **Fix needed:** Remove the literal default; have `install.sh` generate a random key with `openssl rand -hex 20` and write it into `docker/.env` at install time.
+
+**2. Open WebUI auth disabled by default (`WEBUI_AUTH=false`)**
+- All containers bind to `0.0.0.0` (every network interface). With auth off, anyone on the local network can use the chat UI and access models without a password.
+- Acceptable for a trusted home network, but dangerous on shared LANs or cloud VMs.
+- **Fix needed:** Document this risk clearly in the Prerequisites section; consider flipping the default to `WEBUI_AUTH=true` and requiring the user to explicitly opt out.
+
+**3. `WEBUI_SECRET_KEY` defaults to empty (auto-generated)**
+- `docker-compose.yml` passes `WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-}`. An empty value causes Open WebUI to auto-generate a key on startup, which means **every container restart logs out all active sessions**.
+- **Fix needed:** Have `install.sh` generate a stable key (e.g. `openssl rand -hex 32`) and write it to `docker/.env` once, like `VIDEO_GID`/`RENDER_GID` already are. Add an explicit note in `.env.example`.
+
+**4. No TLS/HTTPS on the standalone stack**
+- All services run on plain HTTP. The Runtipi variant gets HTTPS via Traefik labels, but the standalone `docker-compose.yml` has no TLS path.
+- **Fix needed:** Add documentation (and optionally a profile) for putting an Nginx or Caddy reverse proxy in front of the stack for users who need HTTPS.
+
+---
+
+### Breaking / High-risk
+
+**5. Intel GPU drivers fetched from external repo at build time**
+- `docker/Dockerfile` adds the Intel oneAPI GPG key and package repo at build time. If `repositories.intel.com` is unreachable (network outage, removed package), the build fails with no fallback.
+- **Fix needed:** Document the failure mode. Long-term: consider pinning package versions and/or caching the layer in a registry so a cold build is not required on every fresh install.
+
+**6. `OLLAMA_VERSION=latest` in `.env.example`**
+- Using `latest` means a model that works today may fail silently after an upstream Ollama release changes GPU layer handling or API behaviour.
+- **Fix needed:** Update `.env.example` to recommend pinning a specific version (e.g. `OLLAMA_VERSION=0.6.5`) with a note to check the Ollama release page for the latest stable tag.
+
+**7. SearXNG settings.yml not migrated on reinstall**
+- `install.sh` only copies `docker/searxng/settings.yml` into `DATA_DIR` if the file does not already exist. If a user has customised their engines and then re-runs the installer, their config is preserved — but if the repo's default `settings.yml` adds or changes a required key, those changes are silently skipped.
+- **Fix needed:** Log a message on install when the copy is skipped, and mention how to manually re-sync (`cp docker/searxng/settings.yml ${DATA_DIR}/searxng/settings.yml`).
+
+**8. Open WebUI health check start_period may be too short on slow systems**
+- `open-webui` has `start_period: 30s`, `pipelines` has `20s`. On a machine that is downloading the Open WebUI image for the first time or running on spinning rust, these windows can expire before the process is actually ready, causing `depends_on: service_healthy` to block the portal from starting.
+- **Fix needed:** Expose `WEBUI_START_PERIOD` / `PIPELINES_START_PERIOD` env vars so users on slow hardware can tune them without editing `docker-compose.yml`.
+
+---
+
+### Inconsistencies
+
+**9. `logs.sh` does not work with Runtipi containers**
+- The `CNAME` map in `scripts/logs.sh` is hardcoded to the standalone container names (`olama`, `olama-open-webui`, etc.). Runtipi uses different names (`olama-intel-gpu`, `olama-intel-gpu-webui`, etc.).
+- **Fix needed:** Either document that the scripts folder is standalone-only, or add a `--profile runtipi` flag that swaps the container name map.
+
+**10. Runtipi `olama-intel-gpu/config.json` has an empty description**
+- `"description": ""` means the Runtipi app store shows a blank entry for the Intel GPU variant.
+- **Fix needed:** Add a short description string mirroring the one already in `runtipi/apps/olama/config.json`.
+
+**11. Runtipi standalone differences not documented in README**
+- The repo ships two implementations (standalone Intel GPU stack and Runtipi apps), but the README does not explain the functional differences (custom-built Intel image vs. stock `ollama/ollama`, different networking, Traefik HTTPS, no portal in Runtipi version, etc.).
+- **Fix needed:** Add a brief comparison table or paragraph above the Runtipi section.
+
+---
+
+### Maintenance
+
+**12. Model catalog in `model-manager/main.py` is a hardcoded Python dict**
+- Adding or updating models requires editing source code. The list was accurate at writing time but will drift as new Ollama models are published.
+- **Fix needed:** Move the catalog to a `models.json` file that `main.py` loads at startup, making updates a single-file diff with no Python knowledge required. Longer-term: pull the list from the Ollama registry API.
+
+**13. DNS servers are hardcoded (`1.1.1.1`, `8.8.8.8`)**
+- The `x-internet-dns` YAML anchor forces Cloudflare/Google DNS on every service that needs outbound internet. Organisations with filtering DNS, split-horizon DNS, or VPN-based name resolution cannot override this without editing `docker-compose.yml`.
+- **Fix needed:** Add `DNS_SERVERS` to `.env.example` and replace the hardcoded list with `${DNS_SERVERS:-1.1.1.1,8.8.8.8}` so users can override from their `.env`.
+
+**14. Dozzle now defaults to `DOZZLE_LEVEL=warn` (new behaviour)**
+- As of the recent update, the Dozzle web UI hides INFO-level log lines by default. Users who relied on watching routine startup messages in the browser will no longer see them at `http://localhost:9999`.
+- **To see all logs:** Add `DOZZLE_LEVEL=info` to `docker/.env` and run `docker compose up -d dozzle`.
+- **CLI alternative:** `bash scripts/logs.sh tail` still shows all levels regardless of this setting.
+
+**15. No backup or restore documentation**
+- The README shows a one-liner to back up `DATA_DIR`, but there is no documented restore procedure, no note about quiescing the database before backup (Open WebUI uses SQLite which can corrupt if copied mid-write), and no mention of the ChromaDB vector store.
+- **Fix needed:** Add a Backup & Restore section covering: stopping the stack, copying `DATA_DIR`, and restarting; plus a note on the SQLite `.db` file location.
+
+---
+
+### Summary Table
+
+| # | Item | Severity | Effort |
+|---|---|---|---|
+| 1 | Default Pipelines API key in source | **Critical** | Small — generate in install.sh |
+| 2 | WEBUI_AUTH=false on all interfaces | **High** | Small — flip default, document |
+| 3 | WEBUI_SECRET_KEY empty (session loss on restart) | **High** | Small — generate in install.sh |
+| 4 | No HTTPS/TLS on standalone stack | Medium | Medium — add proxy docs/profile |
+| 5 | Intel GPU driver build fragility | Medium | Medium — pin versions |
+| 6 | OLLAMA_VERSION=latest | Medium | Small — update .env.example |
+| 7 | SearXNG settings not migrated on reinstall | Medium | Small — add log message + docs |
+| 8 | Health check start_period not tunable | Low | Small — add env vars |
+| 9 | logs.sh container names incompatible with Runtipi | Low | Small — document or add flag |
+| 10 | Runtipi config.json empty description | Low | Trivial — add string |
+| 11 | Runtipi vs standalone differences undocumented | Low | Small — add comparison |
+| 12 | Model catalog hardcoded in Python | Low | Medium — extract to JSON |
+| 13 | DNS servers not overridable via .env | Low | Small — add DNS_SERVERS var |
+| 14 | Dozzle warn-level default is a behaviour change | Low | Trivial — document |
+| 15 | No backup/restore documentation | Low | Small — add README section |
 ```
