@@ -33,6 +33,19 @@
 #
 # =============================================================================
 
+# ── Shared DNS ────────────────────────────────────────────────────────────────
+# Docker bridge containers inherit the host's /etc/resolv.conf, but many Linux
+# distros (systemd-resolved, split-DNS, VPNs) configure a stub resolver at
+# 127.0.0.53 that is not reachable from inside a container.  The result is
+# DNS failures like "[Errno -3] Temporary failure in name resolution" when
+# containers try to reach huggingface.co, docker.io, pypi.org, etc.
+# Setting explicit public DNS on each service that needs outbound internet
+# access bypasses the stub and ensures reliable name resolution.
+x-internet-dns: &internet-dns
+  dns:
+    - 1.1.1.1   # Cloudflare
+    - 8.8.8.8   # Google
+
 services:
 
 # =============================================================================
@@ -44,6 +57,7 @@ services:
 # =============================================================================
 
   olama:
+    <<: *internet-dns
     build:
       context: .
       dockerfile: Dockerfile
@@ -139,6 +153,7 @@ services:
 # =============================================================================
 
   open-webui:
+    <<: *internet-dns
     image: ghcr.io/open-webui/open-webui:main
     platform: linux/amd64
     container_name: open-webui
@@ -273,6 +288,7 @@ services:
 # =============================================================================
 
   searxng:
+    <<: *internet-dns
     image: searxng/searxng:latest
     platform: linux/amd64
     container_name: searxng
@@ -333,6 +349,7 @@ services:
 # =============================================================================
 
   pipelines:
+    <<: *internet-dns
     image: ghcr.io/open-webui/pipelines:main
     platform: linux/amd64
     container_name: pipelines
