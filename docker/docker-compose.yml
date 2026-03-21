@@ -116,11 +116,11 @@ services:
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
 
       # Allowed origins for the Ollama API (CORS + host-header check).
-      # Ollama's default only allows localhost — any external app (Cursor, VS Code,
-      # Akimo, Open WebUI on a different host, etc.) will be silently dropped unless
-      # its origin is listed here.  '*' permits all origins, which is correct for a
-      # local or LAN-only server.  Restrict to a comma-separated list if needed.
-      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS:-*}
+      # Ollama uses prefix matching, so 'http://192.168.' covers every IP in that
+      # subnet.  The default allows all three RFC-1918 private ranges plus localhost
+      # and Docker bridge networks (172.x) — no internet origin is permitted.
+      # Override in docker/.env if your LAN uses a different address space.
+      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS:-http://localhost,https://localhost,http://127.0.0.1,http://192.168.,http://10.,http://172.}
 
       # Debug: set OLLAMA_DEBUG=1 in docker/.env (or run: bash scripts/logs.sh debug-on)
       # Enables verbose GPU selection, model load steps, and token generation traces.
