@@ -9,15 +9,15 @@
 
     :root {
       --bg:         #0d0d0d;
-      --nav:        #141414;
-      --nav-border: #242424;
-      --surface:    #1a1a1a;
-      --border:     #2a2a2a;
-      --text:       #e2e2e2;
-      --dim:        #5a5a5a;
-      --accent:     #4f9eff;
-      --accent-bg:  rgba(79,158,255,.12);
-      --accent-bdr: rgba(79,158,255,.25);
+      --nav:        #111714;
+      --nav-border: #1e2a1e;
+      --surface:    #141a14;
+      --border:     #243024;
+      --text:       #dde8dd;
+      --dim:        #5a6b5a;
+      --accent:     #4ade80;
+      --accent-bg:  rgba(74,222,128,.12);
+      --accent-bdr: rgba(74,222,128,.28);
       --green:      #4ade80;
       --red:        #f87171;
       --yellow:     #fbbf24;
@@ -74,6 +74,7 @@
       transition: color .15s, background .15s;
       white-space: nowrap;
       line-height: 1;
+      position: relative;
     }
     .nav-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
     .nav-btn:hover { color: var(--text); background: rgba(255,255,255,.05); }
@@ -81,6 +82,21 @@
       color: var(--accent);
       background: var(--accent-bg);
       border-color: var(--accent-bdr);
+    }
+
+    /* Crit Issues button: always red */
+    #btn-issues { color: var(--red); }
+    #btn-issues:hover { color: var(--red); background: rgba(248,113,113,.07); }
+    #btn-issues.active {
+      color: var(--red) !important;
+      background: rgba(248,113,113,.12) !important;
+      border-color: rgba(248,113,113,.3) !important;
+    }
+    /* Pulse when errors are detected */
+    #btn-issues.issues-err { animation: issue-pulse 1.8s ease-in-out infinite; }
+    @keyframes issue-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .55; }
     }
 
     /* small "open in new tab" button, attached to the right of each nav-btn */
@@ -191,6 +207,118 @@
       animation: spin .75s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Crit Issues panel ─────────────────────────────────────── */
+    #frame-issues {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      background: var(--bg);
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    #frame-issues.active {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .issues-card {
+      width: 100%;
+      max-width: 640px;
+    }
+
+    .issues-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1.2rem;
+    }
+    .issues-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .issues-updated {
+      font-size: .73rem;
+      color: var(--dim);
+    }
+
+    .svc-list {
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+    }
+
+    .svc-row {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      padding: .65rem .9rem;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .svc-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--dim);
+      transition: background .3s;
+    }
+    .svc-dot.ok   { background: var(--green); box-shadow: 0 0 5px rgba(74,222,128,.5); }
+    .svc-dot.err  { background: var(--red);   box-shadow: 0 0 5px rgba(248,113,113,.5); }
+    .svc-dot.warn { background: var(--yellow);}
+    .svc-dot.checking { background: var(--dim); animation: pulse .9s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+
+    .svc-name {
+      font-size: .85rem;
+      font-weight: 500;
+      color: var(--text);
+      min-width: 130px;
+    }
+    .svc-detail {
+      font-size: .78rem;
+      color: var(--dim);
+      flex: 1;
+    }
+    .svc-port {
+      font-size: .72rem;
+      color: var(--dim);
+      font-family: monospace;
+    }
+
+    .issues-summary {
+      margin-top: 1rem;
+      padding: .6rem .9rem;
+      border-radius: 8px;
+      font-size: .82rem;
+      text-align: center;
+    }
+    .issues-summary.ok  { background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.2); color: var(--green); }
+    .issues-summary.err { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: var(--red); }
+    .issues-summary.checking { background: var(--surface); border: 1px solid var(--border); color: var(--dim); }
+
+    .refresh-btn {
+      margin-top: .75rem;
+      width: 100%;
+      padding: .45rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--dim);
+      font-size: .78rem;
+      cursor: pointer;
+      transition: color .15s, background .15s;
+    }
+    .refresh-btn:hover { color: var(--text); background: rgba(255,255,255,.05); }
   </style>
 </head>
 <body>
@@ -263,6 +391,21 @@
       </a>
     </div>
 
+    <div class="nav-sep"></div>
+
+    <!-- Crit Issues -->
+    <div class="nav-item">
+      <button class="nav-btn" id="btn-issues" onclick="showFrame('issues')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        Crit Issues
+      </button>
+    </div>
+
   </div><!-- .nav-group -->
 
   <div class="spacer"></div>
@@ -277,6 +420,21 @@
   <iframe id="frame-chat"   title="Open WebUI"></iframe>
   <iframe id="frame-models" title="Model Manager"></iframe>
   <iframe id="frame-logs"   title="Dozzle Logs"></iframe>
+
+  <!-- Crit Issues: inline panel, no iframe needed -->
+  <div id="frame-issues">
+    <div class="issues-card">
+      <div class="issues-header">
+        <span class="issues-title">Service Health</span>
+        <span class="issues-updated" id="issues-updated"></span>
+      </div>
+      <div class="svc-list" id="svc-list">
+        <!-- rows injected by JS -->
+      </div>
+      <div class="issues-summary checking" id="issues-summary">Checking&hellip;</div>
+      <button class="refresh-btn" onclick="runHealthCheck()">Refresh now</button>
+    </div>
+  </div>
 
   <div class="loader" id="loader">
     <div class="spinner"></div>
@@ -322,6 +480,10 @@ function init() {
   showFrame('chat');
   pollStatus();
   setInterval(pollStatus, 30000);
+
+  // Initial health check (deferred so page renders first)
+  setTimeout(runHealthCheck, 800);
+  setInterval(runHealthCheck, 60000);
 }
 
 /* ── Show / hide frames ─────────────────────────────────────── */
@@ -329,8 +491,10 @@ function showFrame(name) {
   current = name;
 
   // Update nav buttons
-  for (const key of Object.keys(PORTS)) {
-    document.getElementById(`btn-${key}`).classList.toggle('active', key === name);
+  const allTabs = [...Object.keys(PORTS), 'issues'];
+  for (const key of allTabs) {
+    const btn = document.getElementById(`btn-${key}`);
+    if (btn) btn.classList.toggle('active', key === name);
   }
 
   // Show selected iframe, hide others (keep rendered — preserves chat state)
@@ -338,9 +502,12 @@ function showFrame(name) {
     document.getElementById(`frame-${key}`).classList.toggle('active', key === name);
   }
 
-  // Show spinner until this iframe has loaded at least once
+  // Issues panel
+  document.getElementById('frame-issues').classList.toggle('active', name === 'issues');
+
+  // Show spinner only for iframe tabs that haven't loaded yet
   const loader = document.getElementById('loader');
-  if (everLoaded[name]) {
+  if (name === 'issues' || everLoaded[name]) {
     loader.classList.add('gone');
   } else {
     loader.classList.remove('gone');
@@ -354,7 +521,8 @@ function showFrame(name) {
   document.title =
     name === 'chat'   ? 'Chat \u2014 Olama Stack' :
     name === 'models' ? 'Models \u2014 Olama Stack' :
-                        'Logs \u2014 Olama Stack';
+    name === 'logs'   ? 'Logs \u2014 Olama Stack' :
+                        'Crit Issues \u2014 Olama Stack';
 }
 
 function frameReady(name) {
@@ -381,6 +549,82 @@ async function pollStatus() {
 function setStatus(state, text) {
   document.getElementById('sdot').className = `dot ${state}`;
   document.getElementById('stext').textContent = text;
+}
+
+/* ── Health check (Issues panel) ───────────────────────────── */
+const SERVICES = [
+  { id: 'ollama',  name: 'Ollama API',    port: null,         path: '/api/local', cors: true  },
+  { id: 'webui',   name: 'Open WebUI',    port: PORTS.chat,   path: '/',          cors: false },
+  { id: 'manager', name: 'Model Manager', port: PORTS.models, path: '/',          cors: false },
+  { id: 'dozzle',  name: 'Log Viewer',    port: PORTS.logs,   path: '/',          cors: false },
+];
+
+let lastCheckResults = {};
+
+async function checkService(svc) {
+  const url = svc.cors
+    ? `${svcUrl('models')}${svc.path}`           // model-manager JSON endpoint
+    : `${proto}//${host}:${svc.port}${svc.path}`;
+  try {
+    if (svc.cors) {
+      const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!r.ok) return { state: 'err', detail: `HTTP ${r.status}` };
+      const d = await r.json();
+      const n = (d.models || []).length;
+      return { state: 'ok', detail: `${n} model${n !== 1 ? 's' : ''} loaded` };
+    } else {
+      // no-cors: any response (even opaque) means the server is up;
+      // a throw means connection refused / timeout.
+      await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(6000) });
+      return { state: 'ok', detail: 'Responding' };
+    }
+  } catch {
+    return { state: 'err', detail: 'Not reachable' };
+  }
+}
+
+async function runHealthCheck() {
+  // Render skeleton rows immediately
+  renderRows(SERVICES.map(s => ({ ...s, state: 'checking', detail: '' })));
+  document.getElementById('issues-summary').className = 'issues-summary checking';
+  document.getElementById('issues-summary').textContent = 'Checking\u2026';
+
+  // Run all checks in parallel
+  const results = await Promise.all(SERVICES.map(checkService));
+
+  results.forEach((res, i) => { lastCheckResults[SERVICES[i].id] = res; });
+
+  renderRows(SERVICES.map((s, i) => ({ ...s, ...results[i] })));
+
+  const anyErr = results.some(r => r.state === 'err');
+  const sum = document.getElementById('issues-summary');
+  if (anyErr) {
+    sum.className = 'issues-summary err';
+    sum.textContent = 'One or more services are not responding.';
+  } else {
+    sum.className = 'issues-summary ok';
+    sum.textContent = 'All systems nominal.';
+  }
+
+  // Update Issues button colour
+  const issBtn = document.getElementById('btn-issues');
+  issBtn.classList.toggle('issues-err', anyErr);
+
+  // Timestamp
+  const now = new Date();
+  document.getElementById('issues-updated').textContent =
+    `Last checked ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+}
+
+function renderRows(rows) {
+  const list = document.getElementById('svc-list');
+  list.innerHTML = rows.map(s => `
+    <div class="svc-row">
+      <span class="svc-dot ${s.state || 'checking'}"></span>
+      <span class="svc-name">${s.name}</span>
+      <span class="svc-detail">${s.detail || ''}</span>
+      ${s.port ? `<span class="svc-port">:${s.port}</span>` : ''}
+    </div>`).join('');
 }
 
 init();
