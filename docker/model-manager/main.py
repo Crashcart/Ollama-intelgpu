@@ -174,6 +174,46 @@ async def get_config():
     return {"webui_port": WEBUI_PORT}
 
 
+@app.get("/api/health")
+async def health_check():
+    """Detailed Ollama connectivity diagnostic for the portal health panel."""
+    import time
+    result: dict = {
+        "ollama": {
+            "url": OLLAMA_URL,
+            "ok": False,
+            "version": None,
+            "latency_ms": None,
+            "error": None,
+            "error_type": None,
+        }
+    }
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/version")
+            result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
+            resp.raise_for_status()
+            result["ollama"]["ok"] = True
+            try:
+                result["ollama"]["version"] = resp.json().get("version")
+            except Exception:
+                pass
+    except httpx.ConnectError as e:
+        result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
+        result["ollama"]["error"] = str(e)
+        result["ollama"]["error_type"] = "ConnectError"
+    except httpx.TimeoutException:
+        result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
+        result["ollama"]["error"] = f"Connection timed out after 8 s (url: {OLLAMA_URL})"
+        result["ollama"]["error_type"] = "Timeout"
+    except Exception as exc:
+        result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
+        result["ollama"]["error"] = str(exc)
+        result["ollama"]["error_type"] = type(exc).__name__
+    return result
+
+
 @app.get("/api/catalog")
 async def catalog():
     return {"models": CATALOG}
