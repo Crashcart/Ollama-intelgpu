@@ -115,6 +115,13 @@ services:
       # Set to -1 to unload immediately after each request (max VRAM savings).
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
 
+      # Allowed origins for the Ollama API (CORS + host-header check).
+      # Ollama uses prefix matching, so 'http://192.168.' covers every IP in that
+      # subnet.  The default allows all three RFC-1918 private ranges plus localhost
+      # and Docker bridge networks (172.x) — no internet origin is permitted.
+      # Override in docker/.env if your LAN uses a different address space.
+      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS:-http://localhost,https://localhost,http://127.0.0.1,http://192.168.,http://10.,http://172.}
+
       # Debug: set OLLAMA_DEBUG=1 in docker/.env (or run: bash scripts/logs.sh debug-on)
       # Enables verbose GPU selection, model load steps, and token generation traces.
       - OLLAMA_DEBUG=${OLLAMA_DEBUG:-0}
@@ -559,11 +566,11 @@ services:
       - DOZZLE_HOSTNAME=olama
       - DOZZLE_NO_ANALYTICS=true
       # Minimum log level shown in the Dozzle UI.
-      # warn  → hides routine INFO noise; surfaces warnings and above (default)
-      # info  → shows all normal operational messages
+      # info  → shows all normal operational messages (default)
+      # warn  → hides routine INFO noise; surfaces warnings and above
       # error → only errors and critical messages (very quiet)
-      # Override in docker/.env: DOZZLE_LEVEL=info
-      - DOZZLE_LEVEL=${DOZZLE_LEVEL:-warn}
+      # Override in docker/.env: DOZZLE_LEVEL=warn
+      - DOZZLE_LEVEL=${DOZZLE_LEVEL:-info}
 
     ports:
       - "${DOZZLE_PORT:-9999}:8080"
