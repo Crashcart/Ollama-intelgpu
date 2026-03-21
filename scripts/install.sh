@@ -360,10 +360,14 @@ cd "$DOCKER_DIR"
 COMPOSE_ANSI=never $COMPOSE_CMD build --pull --progress plain olama
 success "Intel GPU image built."
 
-# ── Pull any missing public images ────────────────────────────────────────────
+# ── Pull public images / build local images ───────────────────────────────────
+# Services with a registry image use `compose pull`.
+# Services built from a local Dockerfile use `compose build`.
 sep
 info "Checking service containers..."
-for svc in open-webui searxng pipelines dozzle model-manager; do
+
+# Public registry images
+for svc in open-webui searxng pipelines dozzle; do
   cname="olama-${svc}"
   if $RECREATE_CONTAINERS; then
     info "  $cname — --recreate set, pulling latest image..."
@@ -374,6 +378,22 @@ for svc in open-webui searxng pipelines dozzle model-manager; do
   else
     info "  $cname — not found, pulling image..."
     COMPOSE_ANSI=never $COMPOSE_CMD pull "$svc"
+    success "  $cname image ready."
+  fi
+done
+
+# Locally-built images (no registry — must use build, not pull)
+for svc in model-manager; do
+  cname="olama-${svc}"
+  if $RECREATE_CONTAINERS; then
+    info "  $cname — --recreate set, rebuilding image..."
+    COMPOSE_ANSI=never $COMPOSE_CMD build --progress plain "$svc"
+    success "  $cname image ready."
+  elif docker image inspect "olama-${svc}:latest" &>/dev/null; then
+    info "  $cname — image already built, skipping"
+  else
+    info "  $cname — not found, building image..."
+    COMPOSE_ANSI=never $COMPOSE_CMD build --progress plain "$svc"
     success "  $cname image ready."
   fi
 done

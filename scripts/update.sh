@@ -63,19 +63,26 @@ fi
 
 echo ""
 
-# ── Pull new images ───────────────────────────────────────────────────────────
+# ── Pull registry images / rebuild local images ───────────────────────────────
+# model-manager is built from a local Dockerfile — skip pull, go straight to build.
+REGISTRY_SERVICES=()
 for svc in "${SERVICES[@]}"; do
-  info "Pulling latest image for: ${svc}"
-  COMPOSE_ANSI=never $COMPOSE pull "$svc" 2>&1 \
-    | grep -v "^#" \
-    | sed 's/^/  /'
-  success "${svc} — image ready."
-  echo ""
+  [[ "$svc" == "model-manager" ]] && continue
+  REGISTRY_SERVICES+=("$svc")
 done
 
-# ── Rebuild model-manager (local Dockerfile) ─────────────────────────────────
-# The model-manager is built locally, so pull alone isn't enough — rebuild it
-# so any changes to the Dockerfile or source are applied.
+if [[ ${#REGISTRY_SERVICES[@]} -gt 0 ]]; then
+  for svc in "${REGISTRY_SERVICES[@]}"; do
+    info "Pulling latest image for: ${svc}"
+    COMPOSE_ANSI=never $COMPOSE pull "$svc" 2>&1 \
+      | grep -v "^#" \
+      | sed 's/^/  /'
+    success "${svc} — image ready."
+    echo ""
+  done
+fi
+
+# model-manager is always rebuilt (local Dockerfile)
 info "Rebuilding model-manager image..."
 COMPOSE_ANSI=never $COMPOSE build --pull --no-cache --progress plain model-manager \
   | grep -v "^#" \
