@@ -216,6 +216,24 @@ async def pull_model(model: str):
     )
 
 
+@app.get("/api/search")
+async def search_registry(q: str = "", p: int = 1):
+    """Proxy search to the Ollama model registry at ollama.com."""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://ollama.com/api/models",
+                params={"q": q, "p": p, "sort": "popular"},
+                headers={"Accept": "application/json"},
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="ollama.com search timed out")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Registry search unavailable: {exc}")
+
+
 @app.delete("/api/model/{model:path}")
 async def delete_model(model: str):
     """Delete a locally installed model."""

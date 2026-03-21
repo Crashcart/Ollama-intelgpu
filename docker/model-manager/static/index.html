@@ -243,6 +243,7 @@
 <main>
   <div class="tabs">
     <button class="tab active" id="tab-browse-btn"    onclick="showTab('browse')">Browse Catalog</button>
+    <button class="tab"        id="tab-registry-btn"  onclick="showTab('registry')">Search Registry</button>
     <button class="tab"        id="tab-installed-btn" onclick="showTab('installed')">Installed</button>
   </div>
 
@@ -279,6 +280,25 @@
     </div>
 
     <div class="grid" id="grid"></div>
+  </div>
+
+  <!-- ── Registry search tab ───────────────────────────────────────────── -->
+  <div id="tab-registry" style="display:none">
+    <div class="pull-box" style="margin-bottom:1.2rem">
+      <p>Search all models on <strong>ollama.com</strong> — including community models like <code>xploiter/the-xploiter</code></p>
+      <div class="pull-row" style="margin-top:.75rem">
+        <input id="reg-input" type="text" placeholder="Search by name, use case, or author…" oninput="onRegistryInput()" />
+        <button class="btn btn-primary" onclick="doRegistrySearch(document.getElementById('reg-input').value.trim(), 1)" style="flex:0;white-space:nowrap">Search</button>
+      </div>
+    </div>
+
+    <div id="reg-results"><div class="empty" style="padding:3rem">Type above to search the Ollama model registry.</div></div>
+
+    <div id="reg-pagination" style="display:none;justify-content:center;gap:.75rem;margin-top:1.5rem;align-items:center">
+      <button class="btn" id="reg-prev" onclick="changeRegPage(-1)">← Prev</button>
+      <span id="reg-page" style="color:var(--dim);font-size:.85rem"></span>
+      <button class="btn" id="reg-next" onclick="changeRegPage(1)">Next →</button>
+    </div>
   </div>
 
   <!-- ── Installed tab ──────────────────────────────────────────────────── -->
@@ -507,8 +527,10 @@ function setFilter(el) {
 
 function showTab(name) {
   document.getElementById('tab-browse').style.display    = name === 'browse'    ? '' : 'none';
+  document.getElementById('tab-registry').style.display  = name === 'registry'  ? '' : 'none';
   document.getElementById('tab-installed').style.display = name === 'installed' ? '' : 'none';
   document.getElementById('tab-browse-btn').classList.toggle('active',    name === 'browse');
+  document.getElementById('tab-registry-btn').classList.toggle('active',  name === 'registry');
   document.getElementById('tab-installed-btn').classList.toggle('active', name === 'installed');
 }
 
@@ -520,6 +542,106 @@ function toast(msg, type) {
   el.className = `show ${type}`;
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+/* ── Registry search ───────────────────────────────────────────────────── */
+let _regPage = 1;
+let _regQuery = '';
+let _regTimer = null;
+let _regHasMore = false;
+
+function onRegistryInput() {
+  clearTimeout(_regTimer);
+  _regTimer = setTimeout(() => {
+    const q = document.getElementById('reg-input').value.trim();
+    doRegistrySearch(q, 1);
+  }, 400);
+}
+
+async function doRegistrySearch(q, page) {
+  _regQuery = q;
+  _regPage  = page;
+  const el  = document.getElementById('reg-results');
+  el.innerHTML = '<div class="empty" style="padding:3rem">Searching\u2026</div>';
+  document.getElementById('reg-pagination').style.display = 'none';
+
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&p=${page}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data   = await res.json();
+    const models = Array.isArray(data) ? data : (data.models || []);
+
+    if (!models.length) {
+      el.innerHTML = '<div class="empty" style="padding:3rem">No results. Try a different search term.</div>';
+      return;
+    }
+
+    renderRegistryResults(models, el);
+
+    _regHasMore = models.length >= 20;
+    const pg = document.getElementById('reg-pagination');
+    if (page > 1 || _regHasMore) {
+      pg.style.display = 'flex';
+      document.getElementById('reg-page').textContent = `Page ${page}`;
+      document.getElementById('reg-prev').disabled = page <= 1;
+      document.getElementById('reg-next').disabled = !_regHasMore;
+    }
+  } catch (e) {
+    el.innerHTML = `<div class="empty" style="padding:3rem">Search failed: ${e.message}<br><br>
+      <a href="https://ollama.com/search?q=${encodeURIComponent(q)}" target="_blank"
+         style="color:var(--accent)">Browse on ollama.com \u2197</a></div>`;
+  }
+}
+
+function renderRegistryResults(models, container) {
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  grid.innerHTML = models.map(m => {
+    const ns     = m.namespace || 'library';
+    const pullId = (ns === 'library') ? m.name : `${ns}/${m.name}`;
+    const inst   = isInstalled(pullId);
+    const pulls  = m.pulls
+      ? (m.pulls >= 1e6 ? (m.pulls/1e6).toFixed(1)+'M' : Math.round(m.pulls/1000)+'K') + ' pulls'
+      : '';
+    const tags   = (m.tags || []).slice(0, 4)
+      .map(t => `<span class="tag">${typeof t === 'string' ? t : t.name}</span>`).join('');
+
+    return `
+    <div class="card${inst ? ' installed' : ''}">
+      <div class="card-head">
+        <div class="card-name" style="word-break:break-all">${pullId}</div>
+        ${pulls ? `<div class="card-size">${pulls}</div>` : ''}
+      </div>
+      <div class="card-desc">${m.description || '\u2014'}</div>
+      ${tags ? `<div class="card-tags">${tags}</div>` : ''}
+      <div class="card-actions">
+        ${inst
+          ? `<button class="btn btn-success" disabled>\u2713 Installed</button>`
+          : `<button class="btn btn-primary" onclick="registryPull('${pullId.replace(/'/g, "\\'")}')">Download</button>`}
+        <a class="btn" href="https://ollama.com/${pullId}" target="_blank" style="text-align:center">View \u2197</a>
+      </div>
+    </div>`;
+  }).join('');
+  container.innerHTML = '';
+  container.appendChild(grid);
+}
+
+function registryPull(modelId) {
+  showTab('browse');
+  const input = document.getElementById('custom-input');
+  input.value = modelId;
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  pullCustom();
+}
+
+function changeRegPage(delta) {
+  const next = _regPage + delta;
+  if (next < 1) return;
+  doRegistrySearch(_regQuery, next);
+  document.getElementById('reg-results').scrollIntoView({ behavior: 'smooth' });
 }
 
 /* ── Auto-refresh installed list every 15 s ─────────────────────────────── */

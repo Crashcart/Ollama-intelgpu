@@ -412,6 +412,7 @@ services:
 # =============================================================================
 
   model-manager:
+    <<: *internet-dns
     build:
       context: ./model-manager
       dockerfile: Dockerfile
