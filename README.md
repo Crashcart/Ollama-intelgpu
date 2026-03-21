@@ -55,7 +55,7 @@ The installer will:
 3. Clone the repo to `/opt/olama-stack/`
 4. Create data directories under `/opt/olama/`
 5. Write `docker/.env` (or update it if one already exists)
-6. Open the three host-facing ports in ufw or firewalld for LAN access
+6. Open the four host-facing ports in ufw or firewalld for LAN access
 7. Build the Ollama Intel GPU image (~5 min first run — installs Intel oneAPI drivers)
 8. Pull images for any containers that do not already exist; skip existing ones
 9. Start all 6 containers
