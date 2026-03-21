@@ -19,6 +19,18 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 All containers (except `olama` itself, which is the project name) carry the `olama-` prefix so they are easy to identify in `docker ps` when you run multiple stacks on the same host. The **Compose service name** is the shorter name used in `docker compose` commands and in `scripts/logs.sh`.
 
+**No duplicate containers.** `olama-open-webui`, `olama-searxng`, `olama-pipelines`, and `olama-dozzle` use `pull_policy: if_not_present`. Docker will:
+- Skip downloading the image if it is already on disk
+- Skip recreating the container if it already exists from a previous install
+
+This prevents accidentally running two copies of the same service. The `olama` container (custom Intel GPU build) is always rebuilt/updated when you re-run the installer.
+
+To explicitly upgrade a public container to its latest image:
+```bash
+docker compose -f /opt/olama-stack/docker/docker-compose.yml pull open-webui
+docker compose -f /opt/olama-stack/docker/docker-compose.yml up -d --force-recreate open-webui
+```
+
 **Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
 
 **Pipelines** adds custom tools, code execution, filters, rate limiting, and usage monitoring to Open WebUI. Drop any `.py` pipeline file into `${DATA_DIR}/pipelines/` to add new capabilities.

@@ -155,6 +155,7 @@ services:
   open-webui:
     <<: *internet-dns
     image: ghcr.io/open-webui/open-webui:main
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
     container_name: olama-open-webui
     restart: unless-stopped
@@ -290,6 +291,7 @@ services:
   searxng:
     <<: *internet-dns
     image: searxng/searxng:latest
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
     container_name: olama-searxng
     restart: unless-stopped
@@ -351,6 +353,7 @@ services:
   pipelines:
     <<: *internet-dns
     image: ghcr.io/open-webui/pipelines:main
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
     container_name: olama-pipelines
     restart: unless-stopped
@@ -402,6 +405,7 @@ services:
 
   dozzle:
     image: amir20/dozzle:latest
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
     container_name: olama-dozzle
     restart: unless-stopped
