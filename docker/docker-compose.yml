@@ -27,6 +27,9 @@
 # ├─────────────────────────────────────────────────────────────────────────┤
 # │  EXPORTABLE DATA  →  everything under DATA_DIR                         │
 # │  LOGS (normal)    →  INFO level — clean, low-noise                     │
+# │  LOGS (errors)    →  bash scripts/logs.sh errors    (classified by     │
+# │                       severity: CRITICAL / SELF-RESOLVING / UNKNOWN)   │
+# │  LOGS (diagnose)  →  bash scripts/logs.sh diagnose  (quick summary)    │
 # │  LOGS (debug)     →  bash scripts/logs.sh debug-on  (deep detail)      │
 # │                       bash scripts/logs.sh debug-off (back to normal)  │
 # └─────────────────────────────────────────────────────────────────────────┘
@@ -555,6 +558,12 @@ services:
       # Name shown in the Dozzle browser tab
       - DOZZLE_HOSTNAME=olama
       - DOZZLE_NO_ANALYTICS=true
+      # Minimum log level shown in the Dozzle UI.
+      # warn  → hides routine INFO noise; surfaces warnings and above (default)
+      # info  → shows all normal operational messages
+      # error → only errors and critical messages (very quiet)
+      # Override in docker/.env: DOZZLE_LEVEL=info
+      - DOZZLE_LEVEL=${DOZZLE_LEVEL:-warn}
 
     ports:
       - "${DOZZLE_PORT:-9999}:8080"

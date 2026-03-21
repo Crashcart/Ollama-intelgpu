@@ -7,10 +7,19 @@
 #   bash scripts/logs.sh status               # container health, categories, debug state
 #   bash scripts/logs.sh tail [name]          # live tail one or all containers
 #   bash scripts/logs.sh show [name] [lines]  # dump recent logs to terminal
-#   bash scripts/logs.sh errors [name]        # show only ERROR/WARN/CRITICAL lines
+#   bash scripts/logs.sh errors [name]        # classify errors: CRITICAL / SELF-RESOLVING / UNKNOWN
+#   bash scripts/logs.sh diagnose [lines]     # quick severity count across all containers
 #   bash scripts/logs.sh export               # save all logs to DATA_DIR/logs/
 #   bash scripts/logs.sh debug-on             # enable verbose logging, restart containers
 #   bash scripts/logs.sh debug-off            # restore normal logging, restart containers
+#
+# Error severity levels (used by 'errors' and 'diagnose'):
+#   CRITICAL       — GPU failure, OOM, database corruption, auth errors, crashes
+#                    → Needs immediate attention; stack may be broken
+#   SELF-RESOLVING — Startup races, transient timeouts, shutdown noise
+#                    → Safe to ignore if not seen after containers are healthy
+#   UNKNOWN        — Other warnings not in either category
+#                    → Investigate if seen repeatedly after a healthy start
 #
 # Container names: olama | open-webui | searxng | pipelines | all (default)
 #
@@ -216,7 +225,76 @@ cmd_tail() {
 
 # ---------------------------------------------------------------------------
 # errors — filter for ERROR / WARN / CRITICAL / EXCEPTION lines
+#          and classify as SELF-RESOLVING (benign) vs CRITICAL (needs action)
 # ---------------------------------------------------------------------------
+
+# Patterns that appear frequently in healthy operation and do NOT need action.
+# These are startup races, transient timeouts, graceful-shutdown noise, etc.
+# grep -E compatible.
+BENIGN_PATTERNS=(
+  # Startup races — services come up in order; these clear once healthy
+  "connection refused"
+  "connection reset by peer"
+  "no such host"
+  "context deadline exceeded"
+  "dial tcp.*connection refused"
+  # Ollama model-unload on idle (expected with OLLAMA_KEEP_ALIVE)
+  "unloading model"
+  # Dozzle graceful-shutdown stream close
+  "failed to shut down"
+  "stream closed"
+  # Open WebUI embedding retry on cold start
+  "retrying.*embedding"
+  # SearXNG rate-limiter warm-up
+  "Too Many Requests"
+  "429"
+  # Docker health-check during start_period (before pass/fail counts)
+  "health_status: starting"
+  # Pipelines first-run pip install noise
+  "WARNING: pip"
+  "DEPRECATION"
+)
+
+# Patterns that indicate a real problem requiring attention.
+CRITICAL_PATTERNS=(
+  # GPU / hardware
+  "no GPU device"
+  "GPU not found"
+  "failed to initialize.*gpu"
+  "OpenCL.*failed"
+  "level_zero.*error"
+  # Out of memory
+  "out of memory"
+  "OOM"
+  "ENOMEM"
+  "cannot allocate"
+  # Model load hard failures
+  "failed to load model"
+  "model.*not found"
+  "error loading"
+  # Database / storage
+  "database.*corrupt"
+  "disk.*full"
+  "no space left"
+  "read-only file system"
+  # Auth / secrets
+  "invalid api key"
+  "unauthorized"
+  "permission denied"
+  # Crash / panic
+  "panic:"
+  "SIGSEGV"
+  "SIGABRT"
+  "fatal error"
+  "core dumped"
+)
+
+_build_pattern() {
+  # Join array elements with | for use in grep -iE
+  local IFS='|'
+  echo "${*}"
+}
+
 cmd_errors() {
   local target="${1:-all}"
   local lines="${2:-500}"
@@ -224,25 +302,71 @@ cmd_errors() {
   read -ra targets <<< "$(resolve_containers "$target")"
 
   bold "Filtering for errors and warnings (last $lines lines each)"
+  printf '  SELF-RESOLVING : known startup/shutdown noise — usually safe to ignore\n'
+  printf '  CRITICAL       : hardware, memory, storage, auth, or crash failures\n'
+  printf '  UNKNOWN        : other warnings/errors — investigate if persistent\n'
   sep
 
+  local benign_pat critical_pat
+  benign_pat="$(_build_pattern "${BENIGN_PATTERNS[@]}")"
+  critical_pat="$(_build_pattern "${CRITICAL_PATTERNS[@]}")"
+
   for c in "${targets[@]}"; do
-    local out
-    if container_running "$c"; then
-      out=$(docker logs --tail "$lines" "${CNAME[$c]:-$c}" 2>&1 \
-        | grep -iE "(error|warn|warning|critical|exception|traceback|fatal)" || true)
-    else
+    if ! container_running "$c"; then
       warn "$c is not running"
       continue
     fi
 
-    if [[ -n "$out" ]]; then
-      bold "── $c ──"
-      echo "$out"
-      echo
-    else
+    local raw_logs
+    raw_logs=$(docker logs --tail "$lines" "${CNAME[$c]:-$c}" 2>&1)
+
+    # All error/warn lines from this container
+    local all_matches
+    all_matches=$(echo "$raw_logs" \
+      | grep -iE "(error|warn|warning|critical|exception|traceback|fatal)" || true)
+
+    if [[ -z "$all_matches" ]]; then
       ok "$c — no errors/warnings in last $lines lines"
+      continue
     fi
+
+    bold "── $c ──"
+
+    # --- CRITICAL ---
+    local critical_lines
+    critical_lines=$(echo "$all_matches" | grep -iE "$critical_pat" || true)
+    if [[ -n "$critical_lines" ]]; then
+      printf '\033[31m  [CRITICAL — needs attention]\033[0m\n'
+      echo "$critical_lines" | sed 's/^/    /'
+      echo
+    fi
+
+    # --- SELF-RESOLVING ---
+    local benign_lines
+    benign_lines=$(echo "$all_matches" | grep -iE "$benign_pat" || true)
+    if [[ -n "$benign_lines" ]]; then
+      printf '\033[33m  [SELF-RESOLVING — usually safe to ignore]\033[0m\n'
+      echo "$benign_lines" | sed 's/^/    /'
+      echo
+    fi
+
+    # --- UNKNOWN (matched errors but not in either category) ---
+    local known_lines unknown_lines
+    known_lines=$(echo "$all_matches" | grep -iE "$critical_pat|$benign_pat" || true)
+    if [[ -n "$known_lines" ]]; then
+      unknown_lines=$(comm -23 \
+        <(echo "$all_matches" | sort) \
+        <(echo "$known_lines"  | sort) || true)
+    else
+      unknown_lines="$all_matches"
+    fi
+    if [[ -n "$unknown_lines" ]]; then
+      printf '\033[36m  [UNKNOWN — investigate if seen repeatedly]\033[0m\n'
+      echo "$unknown_lines" | sed 's/^/    /'
+      echo
+    fi
+
+    sep
   done
 }
 
@@ -384,6 +508,83 @@ cmd_debug_off() {
 }
 
 # ---------------------------------------------------------------------------
+# diagnose — quick health summary: counts per severity, highlights CRITICAL
+# ---------------------------------------------------------------------------
+cmd_diagnose() {
+  local lines="${1:-1000}"
+
+  bold "Olama Stack — Diagnostic Summary (last $lines lines per container)"
+  sep
+  printf '  Scanning for CRITICAL / SELF-RESOLVING / UNKNOWN issues...\n\n'
+
+  local benign_pat critical_pat
+  benign_pat="$(_build_pattern "${BENIGN_PATTERNS[@]}")"
+  critical_pat="$(_build_pattern "${CRITICAL_PATTERNS[@]}")"
+
+  local any_critical=0
+
+  for c in "${CONTAINERS[@]}"; do
+    if ! container_running "$c"; then
+      warn "$c  — NOT RUNNING"
+      continue
+    fi
+
+    local health
+    health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${CNAME[$c]:-$c}" 2>/dev/null || echo "unknown")"
+
+    local raw_logs all_matches
+    raw_logs=$(docker logs --tail "$lines" "${CNAME[$c]:-$c}" 2>&1)
+    all_matches=$(echo "$raw_logs" \
+      | grep -iE "(error|warn|warning|critical|exception|traceback|fatal)" || true)
+
+    local n_critical n_benign n_unknown total
+    n_critical=0; n_benign=0; n_unknown=0; total=0
+
+    if [[ -n "$all_matches" ]]; then
+      n_critical=$(echo "$all_matches" | grep -icE "$critical_pat" || true)
+      n_benign=$(echo "$all_matches"   | grep -icE "$benign_pat"   || true)
+      total=$(echo "$all_matches" | wc -l)
+      n_unknown=$(( total - n_critical - n_benign ))
+      [[ $n_unknown -lt 0 ]] && n_unknown=0
+    fi
+
+    # Health icon
+    local health_tag
+    case "$health" in
+      healthy)   health_tag="\033[32mhealthy\033[0m" ;;
+      unhealthy) health_tag="\033[31mUNHEALTHY\033[0m" ;;
+      starting)  health_tag="\033[33mstarting\033[0m" ;;
+      *)         health_tag="\033[36m$health\033[0m" ;;
+    esac
+
+    printf "  %-14s  health: ${health_tag}\n" "$c"
+
+    if [[ "$total" -eq 0 ]]; then
+      ok "  no warnings/errors found"
+    else
+      [[ $n_critical -gt 0 ]] && { printf "\033[31m    CRITICAL      : %d lines\033[0m\n" "$n_critical"; any_critical=1; }
+      [[ $n_unknown  -gt 0 ]] && printf "\033[36m    UNKNOWN        : %d lines\033[0m\n" "$n_unknown"
+      [[ $n_benign   -gt 0 ]] && printf "\033[33m    SELF-RESOLVING : %d lines (startup/shutdown noise)\033[0m\n" "$n_benign"
+    fi
+    echo
+  done
+
+  sep
+  if [[ $any_critical -eq 1 ]]; then
+    printf '\033[31m  ACTION REQUIRED: CRITICAL issues found.\033[0m\n'
+    printf '  Run to see details:\n'
+    printf '    bash scripts/logs.sh errors          # classify all containers\n'
+    printf '    bash scripts/logs.sh errors <name>   # focus on one container\n'
+    printf '    bash scripts/logs.sh debug-on        # capture full traces\n'
+  else
+    ok "No CRITICAL errors detected — stack looks healthy"
+    printf '  SELF-RESOLVING or UNKNOWN warnings may still appear; use:\n'
+    printf '    bash scripts/logs.sh errors          # see full classification\n'
+  fi
+  echo
+}
+
+# ---------------------------------------------------------------------------
 # dispatch
 # ---------------------------------------------------------------------------
 CMD="${1:-tail}"
@@ -394,6 +595,7 @@ case "$CMD" in
   show)      cmd_show     "$@" ;;
   tail)      cmd_tail     "$@" ;;
   errors)    cmd_errors   "$@" ;;
+  diagnose)  cmd_diagnose "$@" ;;
   export)    cmd_export   "$@" ;;
   debug-on)  cmd_debug_on  ;;
   debug-off) cmd_debug_off ;;
@@ -403,7 +605,8 @@ case "$CMD" in
     echo "  bash scripts/logs.sh status                # health, categories, debug state"
     echo "  bash scripts/logs.sh tail [name]           # live follow logs (Ctrl-C to stop)"
     echo "  bash scripts/logs.sh show [name] [lines]   # dump recent lines to terminal"
-    echo "  bash scripts/logs.sh errors [name]         # errors and warnings only"
+    echo "  bash scripts/logs.sh errors [name]         # classify errors: CRITICAL / SELF-RESOLVING / UNKNOWN"
+    echo "  bash scripts/logs.sh diagnose [lines]      # quick severity summary across all containers"
     echo "  bash scripts/logs.sh export                # save all logs to ${LOG_DIR}/"
     echo
     echo "  bash scripts/logs.sh debug-on              # verbose logging, restart containers"
