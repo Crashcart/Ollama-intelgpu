@@ -9,13 +9,27 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 ## What's Included
 
-| Container | Category | Purpose | Port |
-|---|---|---|---|
-| `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
-| `open-webui` | **Interface** | Browser chat UI connected to the AI | `45213` |
-| `searxng` | **Search** | Self-hosted web search backend | internal only |
-| `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
-| `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
+| Container name | Compose service | Category | Purpose | Port |
+|---|---|---|---|---|
+| `olama` | `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
+| `olama-open-webui` | `open-webui` | **Interface** | Browser chat UI connected to the AI | `45213` |
+| `olama-searxng` | `searxng` | **Search** | Self-hosted web search backend | internal only |
+| `olama-pipelines` | `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
+| `olama-dozzle` | `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
+
+All containers (except `olama` itself, which is the project name) carry the `olama-` prefix so they are easy to identify in `docker ps` when you run multiple stacks on the same host. The **Compose service name** is the shorter name used in `docker compose` commands and in `scripts/logs.sh`.
+
+**No duplicate containers.** `olama-open-webui`, `olama-searxng`, `olama-pipelines`, and `olama-dozzle` use `pull_policy: if_not_present`. Docker will:
+- Skip downloading the image if it is already on disk
+- Skip recreating the container if it already exists from a previous install
+
+This prevents accidentally running two copies of the same service. The `olama` container (custom Intel GPU build) is always rebuilt/updated when you re-run the installer.
+
+To explicitly upgrade a public container to its latest image:
+```bash
+docker compose -f /opt/olama-stack/docker/docker-compose.yml pull open-webui
+docker compose -f /opt/olama-stack/docker/docker-compose.yml up -d --force-recreate open-webui
+```
 
 **Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
 
@@ -56,8 +70,8 @@ The installer will:
 5. Write `docker/.env` (or update it if one already exists from a previous run)
 6. Open the three host-facing ports in ufw or firewalld so other devices on your network can connect
 7. Build the Ollama Intel GPU image (~5 min on first run — pulls Ollama from Docker Hub and installs Intel oneAPI drivers)
-8. Pull the `open-webui`, `searxng`, `pipelines`, and `dozzle` images
-9. Start all 5 containers and wait until Ollama and Open WebUI are ready
+8. Start all 5 containers — public images (`open-webui`, `searxng`, `pipelines`, `dozzle`) are downloaded automatically on first run only; existing containers from a previous install are reused as-is
+9. Wait until Ollama and Open WebUI are ready
 
 The installer is **idempotent** — safe to re-run after an upgrade or if a previous run failed. It updates ports, GPU group IDs, and other install-time values in an existing `.env` without touching your customised settings (API keys, model names, feature flags, etc.).
 

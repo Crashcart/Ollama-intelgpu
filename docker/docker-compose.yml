@@ -155,8 +155,9 @@ services:
   open-webui:
     <<: *internet-dns
     image: ghcr.io/open-webui/open-webui:main
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
-    container_name: open-webui
+    container_name: olama-open-webui
     restart: unless-stopped
     # Wait for all backends to pass their health checks before starting.
     # This prevents the UI from coming up before its dependencies are ready.
@@ -290,8 +291,9 @@ services:
   searxng:
     <<: *internet-dns
     image: searxng/searxng:latest
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
-    container_name: searxng
+    container_name: olama-searxng
     restart: unless-stopped
 
     labels:
@@ -351,8 +353,9 @@ services:
   pipelines:
     <<: *internet-dns
     image: ghcr.io/open-webui/pipelines:main
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
-    container_name: pipelines
+    container_name: olama-pipelines
     restart: unless-stopped
 
     labels:
@@ -402,6 +405,7 @@ services:
 
   dozzle:
     image: amir20/dozzle:latest
+    pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
     container_name: olama-dozzle
     restart: unless-stopped
@@ -432,7 +436,7 @@ services:
       - "${DOZZLE_PORT:-9999}:8080"
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/healthcheck || exit 1"]
+      test: ["CMD", "/dozzle", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3

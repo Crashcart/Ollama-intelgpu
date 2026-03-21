@@ -311,12 +311,10 @@ cd "$DOCKER_DIR"
 COMPOSE_ANSI=never $COMPOSE_CMD build --pull --progress plain olama
 success "Intel GPU image built."
 
-# ── Pull remaining images ──────────────────────────────────────────────────────
-info "Pulling service images (open-webui, searxng, pipelines, dozzle)..."
-COMPOSE_ANSI=never $COMPOSE_CMD pull open-webui searxng pipelines dozzle
-success "Images pulled."
-
 # ── Start the full stack ───────────────────────────────────────────────────────
+# open-webui, searxng, pipelines, and dozzle use pull_policy: if_not_present —
+# Docker will only download them if the image is not already on disk, and will
+# never recreate a container that already exists from a previous install.
 sep
 info "Starting Olama stack (5 containers)..."
 $COMPOSE_CMD up -d
@@ -343,7 +341,7 @@ until curl -sf "http://localhost:${WEBUI_PORT}/" &>/dev/null; do
   RETRIES=$((RETRIES - 1))
   if [[ $RETRIES -le 0 ]]; then
     warn "Open WebUI did not become ready in time — it may still be starting."
-    warn "Check: docker logs open-webui"
+    warn "Check: docker logs olama-open-webui"
     break
   fi
   printf '.'

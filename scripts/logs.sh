@@ -62,6 +62,13 @@ DATA_DIR="$(_read_env DATA_DIR /opt/olama)"
 DOZZLE_PORT="$(_read_env DOZZLE_PORT 9999)"
 LOG_DIR="${DATA_DIR}/logs"
 CONTAINERS=(olama open-webui searxng pipelines)
+# Maps compose service name → actual container_name (as set in docker-compose.yml)
+declare -A CNAME=(
+  [olama]="olama"
+  [open-webui]="olama-open-webui"
+  [searxng]="olama-searxng"
+  [pipelines]="olama-pipelines"
+)
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -74,8 +81,10 @@ ok()     { printf '\033[32m[ OK ]\033[0m  %s\n' "$*"; }
 debug()  { printf '\033[35m[DEBUG]\033[0m %s\n' "$*"; }
 sep()    { printf '%s\n' "──────────────────────────────────────────────────────"; }
 
+# Accepts a service name; looks up the actual container_name via CNAME.
 container_running() {
-  docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q true
+  local cname="${CNAME[$1]:-$1}"
+  docker inspect -f '{{.State.Running}}' "$cname" 2>/dev/null | grep -q true
 }
 
 resolve_containers() {
@@ -135,7 +144,7 @@ cmd_status() {
     if container_running "$c"; then
       # Show Docker health state (healthy / unhealthy / starting / none)
       local health
-      health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}' "$c" 2>/dev/null || echo "unknown")"
+      health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}' "${CNAME[$c]:-$c}" 2>/dev/null || echo "unknown")"
       case "$health" in
         healthy)        ok "running — $health" ;;
         starting)       info "running — $health (waiting for healthcheck)" ;;
@@ -179,7 +188,7 @@ cmd_show() {
   for c in "${targets[@]}"; do
     bold "── $c (last $lines lines) ──────────────────────────"
     if container_running "$c"; then
-      docker logs --tail "$lines" "$c" 2>&1
+      docker logs --tail "$lines" "${CNAME[$c]:-$c}" 2>&1
     else
       warn "$c is not running — cannot fetch live logs"
     fi
@@ -197,7 +206,7 @@ cmd_tail() {
 
   if [[ ${#targets[@]} -eq 1 ]]; then
     info "Following logs for ${targets[0]} — Ctrl-C to stop"
-    docker logs -f "${targets[0]}" 2>&1
+    docker logs -f "${CNAME[${targets[0]}]:-${targets[0]}}" 2>&1
   else
     info "Following logs for all containers — Ctrl-C to stop"
     cd "$COMPOSE_DIR"
@@ -220,7 +229,7 @@ cmd_errors() {
   for c in "${targets[@]}"; do
     local out
     if container_running "$c"; then
-      out=$(docker logs --tail "$lines" "$c" 2>&1 \
+      out=$(docker logs --tail "$lines" "${CNAME[$c]:-$c}" 2>&1 \
         | grep -iE "(error|warn|warning|critical|exception|traceback|fatal)" || true)
     else
       warn "$c is not running"
@@ -248,7 +257,7 @@ cmd_export() {
   for c in "${CONTAINERS[@]}"; do
     local out_file="${LOG_DIR}/${c}.log"
     if container_running "$c"; then
-      docker logs "$c" > "$out_file" 2>&1
+      docker logs "${CNAME[$c]:-$c}" > "$out_file" 2>&1
       local size
       size=$(du -sh "$out_file" | cut -f1)
       ok "$c → ${out_file}  (${size})"
@@ -401,6 +410,7 @@ case "$CMD" in
     echo "  bash scripts/logs.sh debug-off             # normal logging, export + restart"
     echo
     echo "  name: olama | open-webui | searxng | pipelines | all (default: all)"
+    echo "  (these are compose service names; container names have the olama- prefix)"
     exit 1
     ;;
 esac
