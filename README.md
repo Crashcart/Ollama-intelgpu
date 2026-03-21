@@ -9,52 +9,37 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 ## What's Included
 
-| Container name | Compose service | Category | Purpose | Port |
-|---|---|---|---|---|
-| `olama` | `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
-| `olama-open-webui` | `open-webui` | **Interface** | Browser chat UI connected to the AI | `45213` |
-| `olama-searxng` | `searxng` | **Search** | Self-hosted web search backend | internal only |
-| `olama-pipelines` | `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
-| `olama-dozzle` | `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
+| Container | Service | Purpose | Port |
+|---|---|---|---|
+| `olama` | `olama` | Ollama LLM engine — Intel GPU passthrough | `11434` |
+| `olama-open-webui` | `open-webui` | Browser chat UI | `45213` |
+| `olama-searxng` | `searxng` | Self-hosted web search backend | internal |
+| `olama-pipelines` | `pipelines` | Python tool/function runtime for Open WebUI | internal |
+| `olama-dozzle` | `dozzle` | Real-time web log viewer for all containers | `9999` |
 
-All containers (except `olama` itself, which is the project name) carry the `olama-` prefix so they are easy to identify in `docker ps` when you run multiple stacks on the same host. The **Compose service name** is the shorter name used in `docker compose` commands and in `scripts/logs.sh`.
+All containers carry the `olama-` prefix so they are easy to identify in `docker ps` alongside other stacks.
 
-**No duplicate containers.** `olama-open-webui`, `olama-searxng`, `olama-pipelines`, and `olama-dozzle` use `pull_policy: if_not_present`. Docker will:
-- Skip downloading the image if it is already on disk
-- Skip recreating the container if it already exists from a previous install
+**Containers are never recreated by default.** On re-runs the installer skips any container that already exists — your settings and history are never disturbed. Pass `--recreate` to force a fresh rebuild of every container.
 
-This prevents accidentally running two copies of the same service. The `olama` container (custom Intel GPU build) is always rebuilt/updated when you re-run the installer.
+**Web search is off by default.** SearXNG only runs searches when you click the web search toggle in the chat UI.
 
-To explicitly upgrade a public container to its latest image:
-```bash
-docker compose -f /opt/olama-stack/docker/docker-compose.yml pull open-webui
-docker compose -f /opt/olama-stack/docker/docker-compose.yml up -d --force-recreate open-webui
-```
+**Pipelines** adds custom tools, code execution, filters, rate limiting, and usage monitoring to Open WebUI. Drop any `.py` file into `${DATA_DIR}/pipelines/` to add new capabilities.
 
-**Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
-
-**Pipelines** adds custom tools, code execution, filters, rate limiting, and usage monitoring to Open WebUI. Drop any `.py` pipeline file into `${DATA_DIR}/pipelines/` to add new capabilities.
-
-**Dozzle** provides a real-time web log viewer at **http://localhost:9999** — open it in your browser to see live logs from all containers without using the CLI.
-
-All data is stored under a single configurable `DATA_DIR` on the host — no anonymous Docker volumes — so everything is exportable by simply copying that directory.
+All data is stored under a single configurable `DATA_DIR` on the host — no anonymous Docker volumes.
 
 ---
 
 ## Prerequisites
 
-Before installing, make sure you have:
-
-- **Docker** — [Install Docker Engine](https://docs.docker.com/engine/install/)
-- **Docker Compose** — included with Docker Desktop; for Linux servers install the [Compose plugin](https://docs.docker.com/compose/install/linux/)
-- **Intel GPU** — any system with Intel Arc, Iris Xe, or integrated Intel graphics running Linux
-  - Confirm your GPU is visible: `ls /dev/dri/renderD*` (should list at least one device)
+- **Linux** with an Intel GPU (Arc, Iris Xe, or integrated graphics)
+  - Confirm the device is visible: `ls /dev/dri/renderD*`
+- **Docker** and **Docker Compose** — the installer will install them automatically if they are missing
 
 ---
 
 ## Method 1 — One-Command Installer
 
-The fastest way to get the full stack running. The script clones the repo, builds the Intel GPU image, creates the data directories, writes a `.env`, and starts all 5 containers. Safe to run over SSH — closing the terminal will not stop the install.
+The fastest way to get the full stack running. Clones the repo, installs Docker if needed, builds the Intel GPU image, creates data directories, writes a `.env`, and starts all 5 containers. Safe to run over SSH — closing the terminal will not stop the install.
 
 **Step 1 — Run the installer**
 
@@ -63,30 +48,29 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/mai
 ```
 
 The installer will:
-1. Verify Docker and Docker Compose are available
+
+1. Install Docker and Docker Compose if they are not already present
 2. Warn if no Intel GPU render node (`/dev/dri/renderD*`) is found
 3. Clone the repo to `/opt/olama-stack/`
-4. Create data directories under `/opt/olama/` (models, webui, searxng, pipelines, logs)
-5. Write `docker/.env` (or update it if one already exists from a previous run)
-6. Open the three host-facing ports in ufw or firewalld so other devices on your network can connect
-7. Build the Ollama Intel GPU image (~5 min on first run — pulls Ollama from Docker Hub and installs Intel oneAPI drivers)
-8. Start all 5 containers — public images (`open-webui`, `searxng`, `pipelines`, `dozzle`) are downloaded automatically on first run only; existing containers from a previous install are reused as-is
-9. Wait until Ollama and Open WebUI are ready
+4. Create data directories under `/opt/olama/`
+5. Write `docker/.env` (or update it if one already exists)
+6. Open the three host-facing ports in ufw or firewalld for LAN access
+7. Build the Ollama Intel GPU image (~5 min first run — installs Intel oneAPI drivers)
+8. Pull images for any containers that do not already exist; skip existing ones
+9. Start all 5 containers
+10. Wait until Ollama and Open WebUI are healthy
 
-The installer is **idempotent** — safe to re-run after an upgrade or if a previous run failed. It updates ports, GPU group IDs, and other install-time values in an existing `.env` without touching your customised settings (API keys, model names, feature flags, etc.).
+The installer is **idempotent** — safe to re-run after an upgrade or a failed run. It updates ports and GPU group IDs in an existing `.env` without touching your custom settings (API keys, model names, feature flags, etc.).
 
-**The installer is safe to run over SSH — closing the terminal will not interrupt it.**
-All output is logged to `/tmp/olama-install.log`. To follow progress from another session:
+**The installer survives SSH disconnects.** All output is also logged to `/tmp/olama-install.log`:
 
 ```bash
 tail -f /tmp/olama-install.log
 ```
 
-If the install fails, the full log is printed in the error message. You can override the log path with `LOG_FILE=/path/to/install.log bash scripts/install.sh`.
-
 **Step 2 — Pull a model**
 
-No model is included — pull one from the terminal:
+No model is included — pull one after the stack is running:
 
 ```bash
 # Interactive menu
@@ -99,9 +83,9 @@ docker exec olama ollama pull llama3.2:3b
 
 **Step 3 — Open the chat UI**
 
-Open your browser at **http://localhost:45213** and select the model you just pulled.
+Open **http://localhost:45213** and select the model you pulled.
 
-To access from another device on the same network, use the host machine's IP address. The installer prints this at the end:
+To access from another device on the same network, use the host's IP — the installer prints it at the end:
 
 ```
 From other devices on your network:
@@ -110,19 +94,13 @@ From other devices on your network:
   Log viewer →  http://192.168.x.x:9999
 ```
 
-The installer automatically opens those ports in ufw/firewalld. If you use a different firewall, allow TCP ports `45213`, `11434`, and `9999` from your local network.
+---
 
-**Optional — Custom install options**
+## Installer Options
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh) \
-  --port 11434 \
-  --webui-port 45213 \
-  --data-dir /opt/olama \
-  --version latest
+bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh) [OPTIONS]
 ```
-
-Available flags:
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -130,13 +108,27 @@ Available flags:
 | `--port PORT` | `11434` | Host port for the Ollama API |
 | `--webui-port PORT` | `45213` | Host port for the Open WebUI chat UI |
 | `--version TAG` | `latest` | Ollama image tag |
-| `--branch NAME` | auto-detected | Git branch to clone (auto-tries `main` → `master`) |
+| `--branch NAME` | auto-detected | Git branch to clone (`main` → `master` fallback) |
+| `--recreate` | off | Force-recreate all containers (pull latest images, replace existing) |
+
+**Example — custom ports and data directory:**
+
+```bash
+bash <(curl -fsSL .../install.sh) \
+  --port 11434 \
+  --webui-port 45213 \
+  --data-dir /mnt/nas/olama
+```
+
+**Example — force-recreate all containers to pick up latest images:**
+
+```bash
+bash scripts/install.sh --recreate
+```
 
 ---
 
 ## Method 2 — Docker Compose (Manual)
-
-Use this if you want full control over the compose file or are already familiar with Docker Compose.
 
 **Step 1 — Clone the repository**
 
@@ -151,89 +143,63 @@ cd Olama-intelgpu
 cp .env.example docker/.env
 ```
 
-Open `docker/.env`. At minimum, set `DATA_DIR` to wherever you have enough space (external drive, NAS, etc.):
+Open `docker/.env` and set `DATA_DIR` to wherever you have enough space:
 
 ```env
-# Root for all data and logs — change to your storage path
 DATA_DIR=/opt/olama
-
 OLLAMA_PORT=11434
 WEBUI_PORT=45213
 ```
 
-Then create the data directories:
+Create the data directories:
 
 ```bash
-# Docker would create these as root if you skip this — better to own them yourself
 mkdir -p ${DATA_DIR}/{models,webui,searxng,pipelines,logs}
 ```
-
-> **SearXNG config note:** `docker/searxng/settings.yml` is automatically bind-mounted into the container — no manual copy needed. To customise search engines, edit `docker/searxng/settings.yml` directly.
 
 **Step 3 — Build and start**
 
 ```bash
 cd docker
 
-# First run: builds the Olama image (Intel GPU drivers) and starts all containers
+# First run: builds the Olama image and starts all containers
 docker compose up --build -d
 
 # Subsequent starts (image already built):
-docker compose up -d
+docker compose up -d --no-recreate
 ```
 
-The image build takes ~5 minutes the first time — it installs Intel oneAPI GPU drivers on top of the Ollama base image.
-
-**Step 4 — Pull a model (required — no model is included)**
+**Step 4 — Pull a model**
 
 ```bash
-# From terminal
 docker exec olama ollama pull mistral
-
-# Or use the helper script from the repo root
+# or use the helper
 bash scripts/pull-model.sh
 ```
 
 **Step 5 — Open the chat UI**
 
-Open your browser at **http://localhost:45213** and select the model you just pulled.
-
-**Step 6 — Enable web search (when you want it)**
-
-Web search is **off by default**. To search the web for a specific question:
-
-1. In the chat bar, click the **magnifying glass icon** (web search toggle)
-2. It turns blue — your next message will search the web before answering
-3. Click it again to turn web search off
-
-The AI will fetch and summarize relevant search results, then answer your question. SearXNG does not run any searches unless you activate the toggle.
-
-**Stopping and removing**
-
-```bash
-# Stop all containers (all data in DATA_DIR is preserved)
-cd docker && docker compose down
-```
-
-Since all data is bind-mounted to the host, `docker compose down -v` has no extra effect. To fully wipe data: `rm -rf ${DATA_DIR}`.
+Open **http://localhost:45213**.
 
 ---
 
-## How Web Search Works
+## Upgrading Containers
 
-```
-You (toggle ON) → Open WebUI → SearXNG → Public search engines
-                                    ↓
-                          Results returned to Open WebUI
-                                    ↓
-                    Open WebUI sends results + your question → Olama
-                                    ↓
-                              AI answers you
+By default the installer and `docker compose up --no-recreate` leave existing containers untouched. To upgrade a specific container to its latest image:
+
+```bash
+# Pull the new image
+docker compose -f /opt/olama-stack/docker/docker-compose.yml pull open-webui
+
+# Recreate only that container
+docker compose -f /opt/olama-stack/docker/docker-compose.yml up -d --force-recreate open-webui
 ```
 
-- **SearXNG is private** — no exposed port; only reachable by Open WebUI inside the Docker network
-- **No API keys needed** — SearXNG aggregates results from public search engines
-- **You stay in control** — the toggle must be on for any web request to happen
+To upgrade the entire stack at once:
+
+```bash
+bash /opt/olama-stack/scripts/install.sh --recreate
+```
 
 ---
 
@@ -245,99 +211,68 @@ All persistent data is bind-mounted to the host under `DATA_DIR`. Nothing is loc
 ${DATA_DIR}/
 ├── models/        ← Ollama model weights          (can reach 100+ GB for large models)
 ├── webui/         ← Chat history, RAG documents, ChromaDB vector DB, user settings
-├── searxng/       ← SearXNG runtime state (limiter.toml, favicon cache)
+├── searxng/       ← SearXNG runtime state
 ├── pipelines/     ← Pipeline .py scripts; drop files here to add tools to Open WebUI
 └── logs/          ← Log files exported by scripts/logs.sh
 ```
 
-`docker/searxng/settings.yml` (search engine config) lives in the repo and is mounted read-only — edit it there.
-
-**To export or back up everything:**
+**Backup:**
 
 ```bash
-# Copy entire data dir to external drive / NAS
 rsync -av --progress ${DATA_DIR}/ /mnt/backup/olama/
-
-# Or just models (largest item)
-rsync -av --progress ${DATA_DIR}/models/ /mnt/backup/olama-models/
-
-# Or just chat history and documents
-rsync -av --progress ${DATA_DIR}/webui/ /mnt/backup/olama-webui/
 ```
 
-**To move to a new machine:**
+**Move to a new machine:**
 
 1. Copy `${DATA_DIR}/` to the new machine
-2. Clone the repo and set `DATA_DIR` in `docker/.env` to the copied path
+2. Clone the repo, set `DATA_DIR` in `docker/.env`
 3. Run `docker compose up -d` — all history and models are immediately available
 
 ---
 
-## Logs — Viewing and Analyzing
-
-All containers write logs to Docker's `json-file` driver with automatic rotation (10 MB × 5 files per container by default, configurable via `LOG_MAX_SIZE` / `LOG_MAX_FILES` in `.env`).
-
-### Log helper script
+## Logs
 
 ```bash
-# Show container categories, running state, and disk usage
+# Container status and disk usage
 bash scripts/logs.sh status
 
-# Live tail all containers (Ctrl-C to stop)
+# Live tail all containers
 bash scripts/logs.sh tail
 
 # Live tail a single container
 bash scripts/logs.sh tail olama
 bash scripts/logs.sh tail open-webui
-bash scripts/logs.sh tail searxng
-bash scripts/logs.sh tail pipelines
 
-# Dump recent logs to terminal (last 100 lines by default)
+# Show recent logs (last 100 lines)
 bash scripts/logs.sh show
 bash scripts/logs.sh show olama 200
 
-# Show only ERROR / WARN / CRITICAL lines across all containers
+# Show only ERROR / WARN / CRITICAL lines
 bash scripts/logs.sh errors
 
-# Export all logs to ${DATA_DIR}/logs/*.log for offline analysis
+# Export all logs to ${DATA_DIR}/logs/
 bash scripts/logs.sh export
-```
 
-### Log files after export
-
-```
-${DATA_DIR}/logs/
-├── olama.log           ← LLM engine — GPU errors, model load failures, inference errors
-├── open-webui.log      ← Chat UI — RAG errors, auth failures, API call errors
-├── searxng.log         ← Search — query failures, engine timeouts, config errors
-├── pipelines.log       ← Pipelines — tool errors, function failures, API call issues
-└── export-summary.txt  ← File sizes, line counts, timestamp of export
-```
-
-### Searching exported logs for issues
-
-```bash
-# All errors across all services
-grep -iE "error|warn|critical|exception" ${DATA_DIR}/logs/*.log
-
-# GPU-related issues
-grep -i "intel\|gpu\|opencl\|device" ${DATA_DIR}/logs/olama.log
-
-# Web search failures
-grep -iE "searxng|timeout|search" ${DATA_DIR}/logs/open-webui.log
-
-# RAG / document issues
-grep -iE "embed|chroma|rag|document" ${DATA_DIR}/logs/open-webui.log
-```
-
-### Change log verbosity
-
-```bash
-# Enable verbose debug logging across all containers (restarts containers automatically)
+# Toggle verbose debug logging
 bash scripts/logs.sh debug-on
-
-# Restore normal logging
 bash scripts/logs.sh debug-off
+```
+
+Open **http://localhost:9999** for the Dozzle web log viewer — real-time, color-coded, no CLI needed.
+
+---
+
+## Intel GPU Verification
+
+```bash
+# Real-time GPU utilization
+sudo intel_gpu_top
+
+# Verify OpenCL device is visible inside the container
+docker exec olama clinfo | grep -i "device name"
+
+# Run a quick inference
+docker exec olama ollama run mistral "hello"
 ```
 
 ---
@@ -354,17 +289,31 @@ bash scripts/logs.sh debug-off
 | `mistral` | **~4.1 GB** | **Recommended starting model** |
 | `llama3.1:8b` | ~4.7 GB | High quality, 8B params |
 
-Pull any model:
-
 ```bash
 docker exec olama ollama pull <model-name>
 ```
 
 ---
 
-## Runtipi App Store
+## Web Search
 
-To add Olama to a self-hosted [Runtipi](https://runtipi.io) instance:
+```
+You (toggle ON) → Open WebUI → SearXNG → Public search engines
+                                    ↓
+                          Results returned to Open WebUI
+                                    ↓
+                    Open WebUI sends results + question → Olama
+                                    ↓
+                              AI answers you
+```
+
+- **Private** — SearXNG has no exposed port; only reachable by Open WebUI inside the Docker network
+- **No API keys** — aggregates public search engines
+- **On-demand** — click the magnifying glass icon in the chat bar to toggle; off by default
+
+---
+
+## Runtipi App Store
 
 ### Option A — Add as a custom app store
 
@@ -373,7 +322,7 @@ To add Olama to a self-hosted [Runtipi](https://runtipi.io) instance:
    https://github.com/Crashcart/Olama-intelgpu
    ```
 2. **Olama (Intel GPU)** will appear in your store.
-3. Install it, then pull a model from the terminal once the stack is running:
+3. Install it, then pull a model:
    ```bash
    docker exec olama ollama pull mistral
    ```
@@ -382,47 +331,7 @@ To add Olama to a self-hosted [Runtipi](https://runtipi.io) instance:
 
 Copy `runtipi/apps/olama-intel-gpu/` into your Runtipi `apps/` directory and refresh the store.
 
-> **Before clicking Install:** SearXNG needs its config file placed at `<APP_DATA_DIR>/data/searxng/settings.yml`. See the app description in Runtipi for the exact `curl` command to place it.
-
----
-
-## Log Viewer — Web UI (Dozzle)
-
-Open **http://localhost:9999** in your browser for a real-time view of all container logs — no CLI required.
-
-Dozzle shows live, color-coded log streams for `olama`, `open-webui`, `searxng`, and `pipelines` in one tab. Use it to:
-
-- Watch what's happening in real time as you chat or pull a model
-- Search and filter log output across all containers at once
-- Copy log output to share when reporting an issue
-
-**Dozzle is read-only** — it can only view logs, not control containers.
-
-If you need to share logs for a bug report, open Dozzle, reproduce the issue, and paste the relevant output.
-
-To change the port:
-
-```bash
-# In docker/.env
-DOZZLE_PORT=9999
-```
-
----
-
-## Intel GPU Verification
-
-After pulling a model, confirm the Intel GPU is being used:
-
-```bash
-# Check Intel GPU utilization in real time
-sudo intel_gpu_top
-
-# Verify OpenCL device is visible inside the container
-docker exec olama clinfo | grep -i "device name"
-
-# Run a quick inference and check for Intel references in output
-docker exec olama ollama run mistral "hello" 2>&1 | grep -i intel || true
-```
+> **Before clicking Install:** SearXNG needs its config placed at `<APP_DATA_DIR>/data/searxng/settings.yml`. See the app description in Runtipi for the exact command.
 
 ---
 
@@ -431,10 +340,10 @@ docker exec olama ollama run mistral "hello" 2>&1 | grep -i intel || true
 ```
 Olama-intelgpu/
 ├── docker/
-│   ├── Dockerfile               # Multi-stage: copies Ollama binary from Docker Hub, installs Intel oneAPI GPU drivers
+│   ├── Dockerfile               # Ollama + Intel oneAPI GPU drivers
 │   ├── docker-compose.yml       # Full stack: olama + open-webui + searxng + pipelines + dozzle
 │   └── searxng/
-│       └── settings.yml         # SearXNG config (auto-mounted read-only into container)
+│       └── settings.yml         # SearXNG config (auto-mounted read-only)
 ├── scripts/
 │   ├── install.sh               # One-command full-stack installer
 │   ├── pull-model.sh            # Interactive model downloader
@@ -442,16 +351,16 @@ Olama-intelgpu/
 ├── runtipi/
 │   └── apps/
 │       └── olama-intel-gpu/
-│           ├── config.json          # Runtipi app metadata & form fields
-│           ├── docker-compose.yml   # Runtipi-compatible compose
+│           ├── config.json
+│           ├── docker-compose.yml
 │           └── metadata/
-│               └── description.md  # App store description
+│               └── description.md
 └── .env.example                 # All configurable environment variables
 
 ${DATA_DIR}/                     # Host storage (default /opt/olama)
-├── models/                      # AI CORE    — Ollama model weights
-├── webui/                       # INTERFACE  — chat history, RAG, settings
-├── searxng/                     # SEARCH     — SearXNG runtime state
-├── pipelines/                   # PIPELINES  — custom tool/function .py scripts
-└── logs/                        # LOGS       — exported by scripts/logs.sh
+├── models/                      # Ollama model weights
+├── webui/                       # Chat history, RAG, settings
+├── searxng/                     # SearXNG runtime state
+├── pipelines/                   # Custom tool/function .py scripts
+└── logs/                        # Exported by scripts/logs.sh
 ```

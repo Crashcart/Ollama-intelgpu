@@ -17,6 +17,7 @@
 #   --webui-port PORT Host port for the Open WebUI chat UI      (default: 45213)
 #   --version   TAG   Ollama version tag                        (default: latest)
 #   --branch    NAME  Git branch to clone when running via curl (auto-detected if omitted)
+#   --recreate        Force-recreate all containers even if they already exist
 # =============================================================================
 
 set -euo pipefail
@@ -48,6 +49,7 @@ REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 REPO_BRANCH="${REPO_BRANCH:-}"
 DOZZLE_PORT="${DOZZLE_PORT:-9999}"
 COMPOSE_PROJECT="olama"
+RECREATE_CONTAINERS=false
 
 # ── Color helpers ──────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -65,14 +67,16 @@ while [[ $# -gt 0 ]]; do
     --webui-port) WEBUI_PORT="$2";    shift 2 ;;
     --version)    OLLAMA_VERSION="$2"; shift 2 ;;
     --branch)     REPO_BRANCH="$2";   shift 2 ;;
+    --recreate)   RECREATE_CONTAINERS=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [--data-dir DIR] [--port PORT] [--webui-port PORT] [--version TAG] [--branch NAME]"
+      echo "Usage: $0 [--data-dir DIR] [--port PORT] [--webui-port PORT] [--version TAG] [--branch NAME] [--recreate]"
       echo
       echo "  --data-dir   DIR   Storage root for models, chat history, config (default: /opt/olama)"
       echo "  --port       PORT  Host port for Ollama API   (default: 11434)"
       echo "  --webui-port PORT  Host port for Open WebUI   (default: 45213)"
       echo "  --version    TAG   Ollama image tag           (default: latest)"
       echo "  --branch     NAME  Git branch for curl install (default: main)"
+      echo "  --recreate         Force-recreate all containers (default: preserve existing)"
       exit 0 ;;
     *) warn "Unknown option: $1"; shift ;;
   esac
@@ -359,7 +363,11 @@ sep
 info "Checking service containers..."
 for svc in open-webui searxng pipelines dozzle; do
   cname="olama-${svc}"
-  if docker inspect "$cname" &>/dev/null; then
+  if $RECREATE_CONTAINERS; then
+    info "  $cname — --recreate set, pulling latest image..."
+    COMPOSE_ANSI=never $COMPOSE_CMD pull "$svc"
+    success "  $cname image ready."
+  elif docker inspect "$cname" &>/dev/null; then
     info "  $cname — already installed, skipping"
   else
     info "  $cname — not found, pulling image..."
@@ -371,7 +379,12 @@ done
 # ── Start the full stack ───────────────────────────────────────────────────────
 sep
 info "Starting Olama stack (5 containers)..."
-$COMPOSE_CMD up -d --no-recreate
+if $RECREATE_CONTAINERS; then
+  info "(--recreate: existing containers will be replaced)"
+  $COMPOSE_CMD up -d --force-recreate
+else
+  $COMPOSE_CMD up -d --no-recreate
+fi
 echo
 
 # ── Wait for Ollama to become ready ───────────────────────────────────────────
