@@ -742,15 +742,34 @@ async function copyDiagnostic() {
     }
     lines.push('');
   }
-  try {
-    await navigator.clipboard.writeText(lines.join('\n'));
-    const btn = document.getElementById('copy-btn');
+  const text = lines.join('\n');
+  let ok = false;
+
+  // Primary: Clipboard API (requires HTTPS or localhost)
+  if (navigator.clipboard) {
+    try { await navigator.clipboard.writeText(text); ok = true; } catch {}
+  }
+
+  // Fallback: execCommand (works on plain HTTP)
+  if (!ok) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { ok = document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+  }
+
+  const btn = document.getElementById('copy-btn');
+  if (ok) {
     btn.textContent = 'Copied!';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'Copy diagnostic'; btn.classList.remove('copied'); }, 2000);
-  } catch {
-    // Fallback for browsers that block clipboard without interaction
-    prompt('Copy the diagnostic report below:', lines.join('\n'));
+  } else {
+    // Last resort: show in a prompt so user can manually copy
+    prompt('Copy the diagnostic report below:', text);
   }
 }
 
