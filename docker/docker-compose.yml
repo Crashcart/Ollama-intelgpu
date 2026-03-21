@@ -156,7 +156,7 @@ services:
     <<: *internet-dns
     image: ghcr.io/open-webui/open-webui:main
     platform: linux/amd64
-    container_name: open-webui
+    container_name: olama-open-webui
     restart: unless-stopped
     # Wait for all backends to pass their health checks before starting.
     # This prevents the UI from coming up before its dependencies are ready.
@@ -291,7 +291,7 @@ services:
     <<: *internet-dns
     image: searxng/searxng:latest
     platform: linux/amd64
-    container_name: searxng
+    container_name: olama-searxng
     restart: unless-stopped
 
     labels:
@@ -352,7 +352,7 @@ services:
     <<: *internet-dns
     image: ghcr.io/open-webui/pipelines:main
     platform: linux/amd64
-    container_name: pipelines
+    container_name: olama-pipelines
     restart: unless-stopped
 
     labels:

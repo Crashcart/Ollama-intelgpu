@@ -9,13 +9,15 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 ## What's Included
 
-| Container | Category | Purpose | Port |
-|---|---|---|---|
-| `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
-| `open-webui` | **Interface** | Browser chat UI connected to the AI | `45213` |
-| `searxng` | **Search** | Self-hosted web search backend | internal only |
-| `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
-| `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
+| Container name | Compose service | Category | Purpose | Port |
+|---|---|---|---|---|
+| `olama` | `olama` | **AI Core** | Ollama LLM engine with Intel GPU passthrough | `11434` |
+| `olama-open-webui` | `open-webui` | **Interface** | Browser chat UI connected to the AI | `45213` |
+| `olama-searxng` | `searxng` | **Search** | Self-hosted web search backend | internal only |
+| `olama-pipelines` | `pipelines` | **Pipelines** | Python tool/function runtime for Open WebUI | internal only |
+| `olama-dozzle` | `dozzle` | **Logs** | Real-time web log viewer for all containers | `9999` |
+
+All containers (except `olama` itself, which is the project name) carry the `olama-` prefix so they are easy to identify in `docker ps` when you run multiple stacks on the same host. The **Compose service name** is the shorter name used in `docker compose` commands and in `scripts/logs.sh`.
 
 **Web search is off by default.** SearXNG only runs searches when you explicitly toggle the web search button in the chat UI — it never runs in the background on its own.
 

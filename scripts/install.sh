@@ -343,7 +343,7 @@ until curl -sf "http://localhost:${WEBUI_PORT}/" &>/dev/null; do
   RETRIES=$((RETRIES - 1))
   if [[ $RETRIES -le 0 ]]; then
     warn "Open WebUI did not become ready in time — it may still be starting."
-    warn "Check: docker logs open-webui"
+    warn "Check: docker logs olama-open-webui"
     break
   fi
   printf '.'
