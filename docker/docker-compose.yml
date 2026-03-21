@@ -436,7 +436,7 @@ services:
       - "${DOZZLE_PORT:-9999}:8080"
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/healthcheck || exit 1"]
+      test: ["CMD", "/dozzle", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
