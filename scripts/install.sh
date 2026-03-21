@@ -354,10 +354,21 @@ cd "$DOCKER_DIR"
 COMPOSE_ANSI=never $COMPOSE_CMD build --pull --progress plain olama
 success "Intel GPU image built."
 
+# ── Pull any missing public images ────────────────────────────────────────────
+sep
+info "Checking service containers..."
+for svc in open-webui searxng pipelines dozzle; do
+  cname="olama-${svc}"
+  if docker inspect "$cname" &>/dev/null; then
+    info "  $cname — already installed, skipping"
+  else
+    info "  $cname — not found, pulling image..."
+    COMPOSE_ANSI=never $COMPOSE_CMD pull "$svc"
+    success "  $cname image ready."
+  fi
+done
+
 # ── Start the full stack ───────────────────────────────────────────────────────
-# open-webui, searxng, pipelines, and dozzle use pull_policy: if_not_present —
-# Docker will only download them if the image is not already on disk, and will
-# never recreate a container that already exists from a previous install.
 sep
 info "Starting Olama stack (5 containers)..."
 $COMPOSE_CMD up -d
