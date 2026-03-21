@@ -53,11 +53,11 @@ warn()    { echo -e "${YELLOW}[update]${NC} $*"; }
 
 # ── Choose which services to update ──────────────────────────────────────────
 if $UPDATE_ALL; then
-  SERVICES=(open-webui model-manager pipelines searxng dozzle)
+  SERVICES=(open-webui model-manager portal pipelines searxng dozzle)
   info "Updating all services..."
 else
-  SERVICES=(open-webui model-manager)
-  info "Updating UI services (open-webui, model-manager)..."
+  SERVICES=(open-webui model-manager portal)
+  info "Updating UI services (open-webui, model-manager, portal)..."
   info "Use --all to also update searxng, pipelines, and dozzle."
 fi
 

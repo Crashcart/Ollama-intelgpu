@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Olama Stack</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0d0d0d;
+      --nav:        #141414;
+      --nav-border: #242424;
+      --surface:    #1a1a1a;
+      --border:     #2a2a2a;
+      --text:       #e2e2e2;
+      --dim:        #5a5a5a;
+      --accent:     #4f9eff;
+      --accent-bg:  rgba(79,158,255,.12);
+      --accent-bdr: rgba(79,158,255,.25);
+      --green:      #4ade80;
+      --red:        #f87171;
+      --yellow:     #fbbf24;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+    }
+
+    body { display: flex; flex-direction: column; }
+
+    /* ── Top navigation bar ───────────────────────────────────── */
+    nav {
+      height: 48px;
+      min-height: 48px;
+      background: var(--nav);
+      border-bottom: 1px solid var(--nav-border);
+      display: flex;
+      align-items: center;
+      padding: 0 1rem;
+      gap: .5rem;
+    }
+
+    .logo {
+      font-weight: 700;
+      font-size: .95rem;
+      letter-spacing: -.3px;
+      white-space: nowrap;
+      margin-right: .5rem;
+    }
+    .logo em { color: var(--accent); font-style: normal; }
+
+    /* ── Nav items ─────────────────────────────────────────────── */
+    .nav-group { display: flex; gap: 2px; }
+
+    .nav-item { display: flex; align-items: center; }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      padding: .35rem .8rem;
+      border-radius: 6px 0 0 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--dim);
+      cursor: pointer;
+      font-size: .83rem;
+      transition: color .15s, background .15s;
+      white-space: nowrap;
+      line-height: 1;
+    }
+    .nav-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+    .nav-btn:hover { color: var(--text); background: rgba(255,255,255,.05); }
+    .nav-btn.active {
+      color: var(--accent);
+      background: var(--accent-bg);
+      border-color: var(--accent-bdr);
+    }
+
+    /* small "open in new tab" button, attached to the right of each nav-btn */
+    .nav-ext {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 28px;
+      border-radius: 0 6px 6px 0;
+      border: 1px solid transparent;
+      border-left: none;
+      background: transparent;
+      color: var(--dim);
+      text-decoration: none;
+      transition: color .15s, background .15s;
+      flex-shrink: 0;
+    }
+    .nav-ext svg { width: 10px; height: 10px; }
+    .nav-ext:hover { color: var(--text); background: rgba(255,255,255,.05); }
+    .nav-btn.active + .nav-ext {
+      background: var(--accent-bg);
+      border-color: var(--accent-bdr);
+      color: var(--accent);
+    }
+
+    .nav-sep {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+      margin: 0 .5rem;
+      flex-shrink: 0;
+    }
+
+    .spacer { flex: 1; }
+
+    /* ── Status badge ──────────────────────────────────────────── */
+    .badge {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      font-size: .73rem;
+      color: var(--dim);
+      white-space: nowrap;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--dim);
+      transition: background .3s;
+    }
+    .dot.ok  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .dot.err { background: var(--red); }
+    .dot.warn { background: var(--yellow); }
+
+    /* ── Frame area ────────────────────────────────────────────── */
+    .frames {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: var(--bg);
+      /* hidden but kept rendered so state (open chat, scroll pos) survives tab switches */
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s;
+    }
+    iframe.active {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* ── Loading overlay ───────────────────────────────────────── */
+    .loader {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: .9rem;
+      background: var(--bg);
+      color: var(--dim);
+      font-size: .85rem;
+      pointer-events: none;
+      transition: opacity .25s;
+      z-index: 10;
+    }
+    .loader.gone { opacity: 0; pointer-events: none; }
+
+    .spinner {
+      width: 26px;
+      height: 26px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Olama <em>Stack</em></div>
+
+  <div class="nav-group">
+
+    <!-- Chat -->
+    <div class="nav-item">
+      <button class="nav-btn active" id="btn-chat" onclick="showFrame('chat')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        Chat
+      </button>
+      <a class="nav-ext" id="ext-chat" href="#" target="_blank" title="Open Chat in new tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+    </div>
+
+    <div class="nav-sep"></div>
+
+    <!-- Models -->
+    <div class="nav-item">
+      <button class="nav-btn" id="btn-models" onclick="showFrame('models')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Models
+      </button>
+      <a class="nav-ext" id="ext-models" href="#" target="_blank" title="Open Models in new tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+    </div>
+
+    <div class="nav-sep"></div>
+
+    <!-- Logs -->
+    <div class="nav-item">
+      <button class="nav-btn" id="btn-logs" onclick="showFrame('logs')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        Logs
+      </button>
+      <a class="nav-ext" id="ext-logs" href="#" target="_blank" title="Open Logs in new tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+    </div>
+
+  </div><!-- .nav-group -->
+
+  <div class="spacer"></div>
+
+  <div class="badge">
+    <span class="dot" id="sdot"></span>
+    <span id="stext">Connecting&hellip;</span>
+  </div>
+</nav>
+
+<div class="frames">
+  <iframe id="frame-chat"   title="Open WebUI"></iframe>
+  <iframe id="frame-models" title="Model Manager"></iframe>
+  <iframe id="frame-logs"   title="Dozzle Logs"></iframe>
+
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    <span id="loader-msg">Loading&hellip;</span>
+  </div>
+</div>
+
+<script>
+/* ── Ports injected by envsubst at container start ─────────── */
+const PORTS = {
+  chat:   ${WEBUI_PORT},
+  models: ${MODEL_MANAGER_PORT},
+  logs:   ${DOZZLE_PORT},
+};
+
+/* ── Resolve base URL from the browser's own location ──────── */
+const proto = window.location.protocol;
+const host  = window.location.hostname;
+
+function svcUrl(key) {
+  return `${proto}//${host}:${PORTS[key]}`;
+}
+
+/* ── State ──────────────────────────────────────────────────── */
+let current = 'chat';
+const everLoaded = { chat: false, models: false, logs: false };
+
+/* ── Init ───────────────────────────────────────────────────── */
+function init() {
+  // Wire up iframes and external links
+  for (const key of Object.keys(PORTS)) {
+    const fr  = document.getElementById(`frame-${key}`);
+    const ext = document.getElementById(`ext-${key}`);
+    const url = svcUrl(key);
+
+    fr.src  = url;
+    ext.href = url;
+
+    fr.addEventListener('load',  () => frameReady(key));
+    fr.addEventListener('error', () => frameReady(key));
+  }
+
+  showFrame('chat');
+  pollStatus();
+  setInterval(pollStatus, 30000);
+}
+
+/* ── Show / hide frames ─────────────────────────────────────── */
+function showFrame(name) {
+  current = name;
+
+  // Update nav buttons
+  for (const key of Object.keys(PORTS)) {
+    document.getElementById(`btn-${key}`).classList.toggle('active', key === name);
+  }
+
+  // Show selected iframe, hide others (keep rendered — preserves chat state)
+  for (const key of Object.keys(PORTS)) {
+    document.getElementById(`frame-${key}`).classList.toggle('active', key === name);
+  }
+
+  // Show spinner until this iframe has loaded at least once
+  const loader = document.getElementById('loader');
+  if (everLoaded[name]) {
+    loader.classList.add('gone');
+  } else {
+    loader.classList.remove('gone');
+    document.getElementById('loader-msg').textContent =
+      name === 'chat'   ? 'Loading Open WebUI\u2026' :
+      name === 'models' ? 'Loading Model Manager\u2026' :
+                          'Loading Log Viewer\u2026';
+  }
+
+  // Update page title
+  document.title =
+    name === 'chat'   ? 'Chat \u2014 Olama Stack' :
+    name === 'models' ? 'Models \u2014 Olama Stack' :
+                        'Logs \u2014 Olama Stack';
+}
+
+function frameReady(name) {
+  everLoaded[name] = true;
+  if (current === name) {
+    document.getElementById('loader').classList.add('gone');
+  }
+}
+
+/* ── Status: ping model-manager for installed model count ───── */
+async function pollStatus() {
+  try {
+    const r = await fetch(`${svcUrl('models')}/api/local`,
+      { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    const n = (d.models || []).length;
+    setStatus('ok', `${n} model${n !== 1 ? 's' : ''} installed`);
+  } catch {
+    setStatus('warn', 'Services starting\u2026');
+  }
+}
+
+function setStatus(state, text) {
+  document.getElementById('sdot').className = `dot ${state}`;
+  document.getElementById('stext').textContent = text;
+}
+
+init();
+</script>
+</body>
+</html>

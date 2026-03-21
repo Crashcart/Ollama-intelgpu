@@ -8,6 +8,8 @@
 # │                  data: ${DATA_DIR}/models   (can grow to 100+ GB)       │
 # ├─────────────────────────────────────────────────────────────────────────┤
 # │  CATEGORY: INTERFACE                                                    │
+# │    portal          — Unified entry point: Chat+Models+Logs in one page  │
+# │                      (port 45200)  stateless — no data directory needed │
 # │    open-webui      — Browser chat UI connected to olama  (port 45213)   │
 # │                      data: ${DATA_DIR}/webui  (chat history, docs, RAG) │
 # │    model-manager   — Model search, download, delete UI   (port 45214)   │
@@ -452,6 +454,66 @@ services:
         max-size: "${LOG_MAX_SIZE:-10m}"
         max-file: "${LOG_MAX_FILES:-5}"
         tag: "model-manager"
+
+    networks:
+      - olama_net
+
+# =============================================================================
+#  CATEGORY: INTERFACE — PORTAL
+#  Purpose : Single unified entry point for all web interfaces.
+#            One address, one page — Chat / Models / Logs are accessible via
+#            a top navbar without leaving the browser tab.  Switching panels
+#            keeps state (open chat, scroll position) by hiding/showing the
+#            iframes rather than reloading them.
+#  Port    : 45200 → http://localhost:45200  (the recommended bookmark)
+#  Data    : none (static HTML shell, ports injected at startup via envsubst)
+# =============================================================================
+
+  portal:
+    <<: *internet-dns
+    build:
+      context: ./portal
+      dockerfile: Dockerfile
+    image: olama-portal:latest
+    container_name: olama-portal
+    restart: unless-stopped
+    # Portal is purely a static page — it can start before the services it
+    # frames; the iframes show a spinner until each service responds.
+    depends_on:
+      - open-webui
+      - model-manager
+      - dozzle
+
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "Unified portal — single entry point for Chat, Models, and Logs"
+      com.olama.data: "none"
+      com.olama.log: "none"
+
+    ports:
+      - "${PORTAL_PORT:-45200}:8080"
+
+    environment:
+      # Port numbers are injected into the HTML at container start via envsubst.
+      # The browser constructs the full URL using its own hostname — no host is
+      # hardcoded, so boris.local, a LAN IP, and localhost all work the same way.
+      - WEBUI_PORT=${WEBUI_PORT:-45213}
+      - MODEL_MANAGER_PORT=${MODEL_MANAGER_PORT:-45214}
+      - DOZZLE_PORT=${DOZZLE_PORT:-9999}
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"
+        tag: "portal"
 
     networks:
       - olama_net

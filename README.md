@@ -3,7 +3,7 @@
 Run [Ollama](https://ollama.com) in Docker with Intel GPU acceleration.
 Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel's oneAPI runtime.
 
-> **No models are bundled.** After starting, open the **Model Manager** at `http://localhost:45214` to search, download, and delete models from your browser — no CLI needed.
+> **Unified portal at `http://localhost:45200`** — Chat, Model Manager, and Log Viewer all in one browser tab. No model is bundled; open the **Models** tab to download one.
 
 ---
 
@@ -11,6 +11,7 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 | Container | Service | Purpose | Port |
 |---|---|---|---|
+| `olama-portal` | `portal` | **Unified web portal** — Chat, Models, and Logs in one tab | `45200` |
 | `olama` | `olama` | Ollama LLM engine — Intel GPU passthrough | `11434` |
 | `olama-open-webui` | `open-webui` | Browser chat UI | `45213` |
 | `olama-model-manager` | `model-manager` | Model search, download, and delete UI | `45214` |
@@ -19,6 +20,8 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 | `olama-dozzle` | `dozzle` | Real-time web log viewer for all containers | `9999` |
 
 All containers carry the `olama-` prefix so they are easy to identify in `docker ps` alongside other stacks.
+
+**The portal is the recommended bookmark.** Open `http://localhost:45200` once and you can reach Chat, Models, and Logs from the top nav without switching tabs or ports. Each service is still accessible directly on its own port if you prefer.
 
 **Containers are never recreated by default.** On re-runs the installer skips any container that already exists — your settings and history are never disturbed. Pass `--recreate` to force a fresh rebuild of every container.
 
@@ -40,7 +43,7 @@ All data is stored under a single configurable `DATA_DIR` on the host — no ano
 
 ## Method 1 — One-Command Installer
 
-The fastest way to get the full stack running. Clones the repo, installs Docker if needed, builds the Intel GPU image, creates data directories, writes a `.env`, and starts all 6 containers. Safe to run over SSH — closing the terminal will not stop the install.
+The fastest way to get the full stack running. Clones the repo, installs Docker if needed, builds the Intel GPU image, creates data directories, writes a `.env`, and starts all 7 containers. Safe to run over SSH — closing the terminal will not stop the install.
 
 **Step 1 — Run the installer**
 
@@ -58,7 +61,7 @@ The installer will:
 6. Open the four host-facing ports in ufw or firewalld for LAN access
 7. Build the Ollama Intel GPU image (~5 min first run — installs Intel oneAPI drivers)
 8. Pull images for any containers that do not already exist; skip existing ones
-9. Start all 6 containers
+9. Start all 7 containers
 10. Wait until Ollama and Open WebUI are healthy
 
 The installer is **idempotent** — safe to re-run after an upgrade or a failed run. It updates ports and GPU group IDs in an existing `.env` without touching your custom settings (API keys, model names, feature flags, etc.).
@@ -71,9 +74,11 @@ tail -f /tmp/olama-install.log
 
 **Step 2 — Download a model**
 
-No model is bundled — download one after the stack is running. The easiest way is the Model Manager web UI:
+No model is bundled — download one after the stack is running. The easiest way is the unified portal:
 
-Open **http://localhost:45214** — browse the catalog, filter by category, and click **Download**.
+Open **http://localhost:45200** → click the **Models** tab — browse the catalog, filter by category, and click **Download**.
+
+Or go directly to the Model Manager at **http://localhost:45214**.
 
 Or from the CLI:
 
@@ -86,18 +91,19 @@ docker exec olama ollama pull mistral
 docker exec olama ollama pull llama3.2:3b
 ```
 
-**Step 3 — Open the chat UI**
+**Step 3 — Open the portal**
 
-Open **http://localhost:45213** and select the model you pulled.
+Open **http://localhost:45200** — the unified portal loads with Chat, Models, and Logs all accessible from the top nav bar. Bookmark this single URL.
 
 To access from another device on the same network, use the host's IP — the installer prints it at the end:
 
 ```
 From other devices on your network:
-  Chat UI        →  http://192.168.x.x:45213
-  Model Manager  →  http://192.168.x.x:45214
-  Ollama API     →  http://192.168.x.x:11434
-  Log viewer     →  http://192.168.x.x:9999
+  Portal (all-in-one) →  http://192.168.x.x:45200   ← bookmark this
+  Chat UI             →  http://192.168.x.x:45213
+  Model Manager       →  http://192.168.x.x:45214
+  Ollama API          →  http://192.168.x.x:11434
+  Log viewer          →  http://192.168.x.x:9999
 ```
 
 ---
@@ -183,9 +189,9 @@ docker exec olama ollama pull mistral
 bash scripts/pull-model.sh
 ```
 
-**Step 5 — Open the chat UI**
+**Step 5 — Open the portal**
 
-Open **http://localhost:45213**.
+Open **http://localhost:45200** for the unified portal (Chat + Models + Logs in one tab), or go directly to **http://localhost:45213** for just the chat UI.
 
 ---
 
@@ -293,6 +299,34 @@ docker exec olama ollama run mistral "hello"
 
 ---
 
+## Unified Portal
+
+The **portal** at `http://localhost:45200` is a lightweight nginx container that wraps all three web interfaces into a single browser tab.
+
+```
+┌─────────────────────────────────────────────┐
+│  Olama Stack  [ Chat ]  [ Models ]  [ Logs ] │  ← 48 px dark nav bar
+├─────────────────────────────────────────────┤
+│                                             │
+│   Active service displayed here via iframe  │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+- **Chat** — Open WebUI (port 45213)
+- **Models** — Model Manager (port 45214)
+- **Logs** — Dozzle real-time log viewer (port 9999)
+
+**State is preserved** — switching tabs does not reload the iframe, so your open chat conversation and scroll position survive.
+
+**↗ Open in new tab** — each nav button has a small external-link icon to pop the service out full-screen.
+
+**Status badge** — the top-right corner shows the number of installed models and whether the stack is healthy, polled every 30 seconds.
+
+**Works on any hostname** — the portal resolves service URLs from `window.location.hostname`, so `localhost`, a LAN IP, and a hostname like `boris.local` all work without reconfiguration.
+
+---
+
 ## Model Manager
 
 The **Model Manager** at `http://localhost:45214` lets you:
@@ -366,7 +400,12 @@ Copy `runtipi/apps/olama-intel-gpu/` into your Runtipi `apps/` directory and ref
 Olama-intelgpu/
 ├── docker/
 │   ├── Dockerfile               # Ollama + Intel oneAPI GPU drivers
-│   ├── docker-compose.yml       # Full stack: olama + open-webui + model-manager + searxng + pipelines + dozzle
+│   ├── docker-compose.yml       # Full stack: portal + olama + open-webui + model-manager + searxng + pipelines + dozzle
+│   ├── portal/
+│   │   ├── Dockerfile           # nginx:alpine + gettext (envsubst)
+│   │   ├── nginx.conf           # Static file server on port 8080
+│   │   ├── entrypoint.sh        # Injects port vars into HTML template at container start
+│   │   └── index.html.template  # Single-page portal shell (iframes + dark nav)
 │   ├── model-manager/
 │   │   ├── Dockerfile           # Python 3.11 slim + FastAPI
 │   │   ├── main.py              # API proxy + model catalog

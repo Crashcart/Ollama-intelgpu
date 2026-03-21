@@ -49,6 +49,7 @@ REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 REPO_BRANCH="${REPO_BRANCH:-}"
 DOZZLE_PORT="${DOZZLE_PORT:-9999}"
 MODEL_MANAGER_PORT="${MODEL_MANAGER_PORT:-45214}"
+PORTAL_PORT="${PORTAL_PORT:-45200}"
 COMPOSE_PROJECT="olama"
 RECREATE_CONTAINERS=false
 
@@ -298,6 +299,7 @@ _stamp_env "$ENV_FILE" \
   WEBUI_PORT           "${WEBUI_PORT}" \
   DOZZLE_PORT          "${DOZZLE_PORT}" \
   MODEL_MANAGER_PORT   "${MODEL_MANAGER_PORT}" \
+  PORTAL_PORT          "${PORTAL_PORT}" \
   OLLAMA_VERSION       "${OLLAMA_VERSION}" \
   VIDEO_GID            "${VIDEO_GID}" \
   RENDER_GID           "${RENDER_GID}"
@@ -311,8 +313,8 @@ info "Review and adjust ${ENV_FILE} at any time — then run: docker compose up 
 # devices on the same network can connect.
 sep
 info "Checking host firewall for LAN access..."
-_fw_ports=("${WEBUI_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}" "${MODEL_MANAGER_PORT}")
-_fw_labels=("Open WebUI (chat)" "Ollama API" "Dozzle (logs)" "Model Manager")
+_fw_ports=("${PORTAL_PORT}" "${WEBUI_PORT}" "${MODEL_MANAGER_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}")
+_fw_labels=("Portal (unified UI)" "Open WebUI (chat)" "Model Manager" "Ollama API" "Dozzle (logs)")
 _fw_opened=()
 
 if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
@@ -383,7 +385,7 @@ for svc in open-webui searxng pipelines dozzle; do
 done
 
 # Locally-built images (no registry — must use build, not pull)
-for svc in model-manager; do
+for svc in model-manager portal; do
   cname="olama-${svc}"
   if $RECREATE_CONTAINERS; then
     info "  $cname — --recreate set, rebuilding image..."
@@ -400,7 +402,7 @@ done
 
 # ── Start the full stack ───────────────────────────────────────────────────────
 sep
-info "Starting Olama stack (6 containers)..."
+info "Starting Olama stack (7 containers)..."
 if $RECREATE_CONTAINERS; then
   info "(--recreate: existing containers will be replaced)"
   $COMPOSE_CMD up -d --force-recreate
@@ -445,16 +447,21 @@ _lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i==
 sep
 success "Olama stack is running!"
 echo
-echo "  Chat UI        :  http://localhost:${WEBUI_PORT}"
-echo "  Model Manager  :  http://localhost:${MODEL_MANAGER_PORT}  (search, download, delete models)"
-echo "  Ollama API     :  http://localhost:${OLLAMA_PORT}"
-echo "  Log viewer     :  http://localhost:${DOZZLE_PORT}  (Dozzle — live logs for all containers)"
+echo "  ┌─ Unified portal (recommended bookmark) ──────────────────────┐"
+echo "  │  http://localhost:${PORTAL_PORT}   (Chat + Models + Logs in one page)  │"
+echo "  └───────────────────────────────────────────────────────────────┘"
+echo
+echo "  Individual services:"
+echo "    Chat UI        →  http://localhost:${WEBUI_PORT}"
+echo "    Model Manager  →  http://localhost:${MODEL_MANAGER_PORT}"
+echo "    Log viewer     →  http://localhost:${DOZZLE_PORT}"
+echo "    Ollama API     →  http://localhost:${OLLAMA_PORT}"
 if [[ -n "$_lan_ip" ]]; then
   echo
   echo "  From other devices on your network:"
+  echo "    Portal         →  http://${_lan_ip}:${PORTAL_PORT}   ← bookmark this"
   echo "    Chat UI        →  http://${_lan_ip}:${WEBUI_PORT}"
   echo "    Model Manager  →  http://${_lan_ip}:${MODEL_MANAGER_PORT}"
-  echo "    Ollama API     →  http://${_lan_ip}:${OLLAMA_PORT}"
   echo "    Log viewer     →  http://${_lan_ip}:${DOZZLE_PORT}"
 fi
 echo
@@ -464,13 +471,7 @@ echo "  Status      :  bash ${INSTALL_DIR}/scripts/logs.sh status"
 echo "  Update UI   :  bash ${INSTALL_DIR}/scripts/update.sh"
 echo "  Stop        :  cd ${INSTALL_DIR}/docker && docker compose down"
 echo
-echo "  Pull a model (via Model Manager UI or CLI):"
-echo "    open  http://localhost:${MODEL_MANAGER_PORT}  (recommended — search, filter, one-click pull)"
-echo "    or:   docker exec olama ollama pull mistral"
-echo "          docker exec olama ollama pull llama3.2:3b"
-echo "          docker exec olama ollama pull llava          # vision model"
-echo
-echo "  If Open WebUI shows 'Ollama is running' instead of the chat UI:"
+echo "  If Open WebUI shows a blank page or 'Ollama is running':"
 echo "    bash ${INSTALL_DIR}/scripts/update.sh"
 echo
 echo "  Verify Intel GPU is in use (after pulling a model):"
