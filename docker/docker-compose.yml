@@ -8,8 +8,10 @@
 # │                  data: ${DATA_DIR}/models   (can grow to 100+ GB)       │
 # ├─────────────────────────────────────────────────────────────────────────┤
 # │  CATEGORY: INTERFACE                                                    │
-# │    open-webui  — Browser chat UI connected to olama    (port 45213)      │
-# │                  data: ${DATA_DIR}/webui    (chat history, docs, RAG)   │
+# │    open-webui      — Browser chat UI connected to olama  (port 45213)   │
+# │                      data: ${DATA_DIR}/webui  (chat history, docs, RAG) │
+# │    model-manager   — Model search, download, delete UI   (port 45214)   │
+# │                      stateless — no data directory needed               │
 # ├─────────────────────────────────────────────────────────────────────────┤
 # │  CATEGORY: SEARCH                                                       │
 # │    searxng     — Self-hosted search (internal only, no host port)       │
@@ -243,6 +245,10 @@ services:
       # Or run: bash scripts/logs.sh debug-on
       - LOG_LEVEL=${WEBUI_LOG_LEVEL:-INFO}
 
+      # ── Open WebUI stays on the image it was first installed with ─────────
+      # To get a newer Open WebUI release run:  bash scripts/update.sh
+      # That will pull the latest image and recreate the container safely.
+
       # ── Community sharing ──────────────────────────────────────────────
       # Allow users to share their custom prompts to the Open WebUI community hub.
       - ENABLE_COMMUNITY_SHARING=${ENABLE_COMMUNITY_SHARING:-false}
@@ -390,6 +396,58 @@ services:
         max-size: "${LOG_MAX_SIZE:-10m}"
         max-file: "${LOG_MAX_FILES:-5}"
         tag: "pipelines"
+
+    networks:
+      - olama_net
+
+# =============================================================================
+#  CATEGORY: INTERFACE — MODEL MANAGER
+#  Purpose : Lightweight web UI for searching and downloading Ollama models.
+#            Browse a curated catalog, filter by category (text/code/vision/
+#            embedding), pull any model by name, track download progress, and
+#            delete models to reclaim disk space.
+#            Pulls any model from the Ollama registry — no CLI needed.
+#  Port    : 45214 → http://localhost:45214
+#  Data    : none (stateless proxy to the olama container)
+# =============================================================================
+
+  model-manager:
+    build:
+      context: ./model-manager
+      dockerfile: Dockerfile
+    image: olama-model-manager:latest
+    container_name: olama-model-manager
+    restart: unless-stopped
+    depends_on:
+      olama:
+        condition: service_healthy
+
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "Ollama model search and download manager"
+      com.olama.data: "none"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/model-manager.log"
+
+    ports:
+      - "${MODEL_MANAGER_PORT:-45214}:8080"
+
+    environment:
+      - OLLAMA_BASE_URL=http://olama:11434
+      - WEBUI_URL=http://localhost:${WEBUI_PORT:-45213}
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "model-manager"
 
     networks:
       - olama_net

@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Olama — Model Manager</title>
+  <style>
+    :root {
+      --bg:          #0d0d0d;
+      --surface:     #161616;
+      --surface2:    #202020;
+      --border:      #2e2e2e;
+      --text:        #e2e2e2;
+      --dim:         #777;
+      --accent:      #4f9eff;
+      --accent-bg:   rgba(79,158,255,.12);
+      --green:       #4ade80;
+      --green-bg:    rgba(74,222,128,.1);
+      --red:         #f87171;
+      --red-bg:      rgba(248,113,113,.1);
+      --yellow:      #fbbf24;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.5rem;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo { font-weight: 700; font-size: 1rem; letter-spacing: -.3px; }
+    .logo span { color: var(--accent); }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      font-size: .75rem;
+      color: var(--dim);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: .2rem .7rem;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
+    .dot.online  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.offline { background: var(--red); }
+    header a {
+      margin-left: auto;
+      color: var(--dim);
+      text-decoration: none;
+      font-size: .8rem;
+      display: flex;
+      align-items: center;
+      gap: .3rem;
+      transition: color .15s;
+    }
+    header a:hover { color: var(--text); }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    main { max-width: 1280px; margin: 0 auto; padding: 1.5rem; }
+
+    /* ── Tabs ───────────────────────────────────────────────────────────── */
+    .tabs { display: flex; gap: .4rem; margin-bottom: 1.5rem; }
+    .tab {
+      padding: .4rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--dim);
+      cursor: pointer;
+      font-size: .85rem;
+      transition: all .15s;
+    }
+    .tab.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+    /* ── Custom pull box ────────────────────────────────────────────────── */
+    .pull-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem;
+      margin-bottom: 1.5rem;
+    }
+    .pull-box p { color: var(--dim); font-size: .8rem; margin-bottom: .75rem; }
+    .pull-row { display: flex; gap: .6rem; }
+    .pull-row input {
+      flex: 1;
+      padding: .5rem .9rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      font-size: .9rem;
+      transition: border-color .15s;
+    }
+    .pull-row input::placeholder { color: var(--dim); }
+    .pull-row input:focus { outline: none; border-color: var(--accent); }
+
+    /* ── Search + filters ───────────────────────────────────────────────── */
+    .controls { display: flex; gap: .75rem; align-items: center; margin-bottom: 1.2rem; flex-wrap: wrap; }
+    .search-wrap { position: relative; flex: 1; min-width: 180px; }
+    .search-wrap svg { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
+    .search-wrap input {
+      width: 100%;
+      padding: .5rem .9rem .5rem 2.2rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      font-size: .9rem;
+      transition: border-color .15s;
+    }
+    .search-wrap input::placeholder { color: var(--dim); }
+    .search-wrap input:focus { outline: none; border-color: var(--accent); }
+    .chips { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .chip {
+      padding: .25rem .75rem;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--dim);
+      cursor: pointer;
+      font-size: .78rem;
+      transition: all .15s;
+    }
+    .chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+
+    /* ── Progress bar (shared) ──────────────────────────────────────────── */
+    .prog-wrap { margin-top: .6rem; display: none; }
+    .prog-wrap.show { display: block; }
+    .prog-bar { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+    .prog-fill { height: 100%; background: var(--accent); width: 0%; transition: width .25s; border-radius: 2px; }
+    .prog-label { font-size: .73rem; color: var(--dim); margin-top: .35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Model grid ─────────────────────────────────────────────────────── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: .85rem; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: .65rem;
+      transition: border-color .15s;
+    }
+    .card:hover { border-color: #404040; }
+    .card.installed { border-color: rgba(79,158,255,.4); }
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+    .card-name { font-weight: 600; font-size: .95rem; line-height: 1.3; }
+    .card-size { font-size: .72rem; color: var(--dim); background: var(--surface2); padding: .15rem .5rem; border-radius: 4px; white-space: nowrap; flex-shrink: 0; }
+    .card-desc { font-size: .82rem; color: var(--dim); line-height: 1.5; flex: 1; }
+    .card-tags { display: flex; gap: .3rem; flex-wrap: wrap; }
+    .tag { font-size: .7rem; padding: .12rem .45rem; border-radius: 4px; background: var(--surface2); color: var(--dim); }
+    .tag-code      { color: #7dd3fc; background: rgba(125,211,252,.08); }
+    .tag-vision    { color: #f0abfc; background: rgba(240,171,252,.08); }
+    .tag-embedding { color: #c4b5fd; background: rgba(196,181,253,.08); }
+    .tag-fast      { color: var(--green); background: var(--green-bg); }
+    .tag-large     { color: var(--yellow); background: rgba(251,191,36,.08); }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn {
+      padding: .42rem .9rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font-size: .82rem;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) { background: var(--surface2); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary  { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+    .btn-primary:hover:not(:disabled) { background: rgba(79,158,255,.22); }
+    .btn-success  { background: var(--green-bg); border-color: var(--green); color: var(--green); cursor: default; }
+    .btn-danger   { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+    .btn-danger:hover:not(:disabled) { background: rgba(248,113,113,.2); }
+    .card-actions { display: flex; gap: .5rem; margin-top: auto; }
+
+    /* ── Installed list ─────────────────────────────────────────────────── */
+    .installed-list { display: flex; flex-direction: column; gap: .5rem; }
+    .inst-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .9rem 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .inst-name { font-weight: 500; flex: 1; }
+    .inst-meta { font-size: .75rem; color: var(--dim); }
+    .empty { text-align: center; color: var(--dim); padding: 3rem 1rem; line-height: 1.7; }
+
+    /* ── Toast ──────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      padding: .65rem 1.1rem;
+      border-radius: 8px;
+      font-size: .85rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity .25s, transform .25s;
+      z-index: 100;
+      max-width: 320px;
+    }
+    #toast.show { opacity: 1; transform: none; }
+    #toast.ok  { border-color: var(--green); color: var(--green); }
+    #toast.err { border-color: var(--red);   color: var(--red); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Olama <span>Models</span></div>
+  <div class="status-pill">
+    <span class="dot" id="dot"></span>
+    <span id="status-text">Connecting…</span>
+  </div>
+  <a href="#" id="webui-link" target="_blank">Open WebUI ↗</a>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" id="tab-browse-btn"    onclick="showTab('browse')">Browse Catalog</button>
+    <button class="tab"        id="tab-installed-btn" onclick="showTab('installed')">Installed</button>
+  </div>
+
+  <!-- ── Browse tab ─────────────────────────────────────────────────────── -->
+  <div id="tab-browse">
+    <div class="pull-box">
+      <p>Pull any model by name from the Ollama registry — e.g. <code>llama3.2:3b</code>, <code>mistral</code>, <code>phi4-mini</code></p>
+      <div class="pull-row">
+        <input id="custom-input" type="text" placeholder="model:tag" />
+        <button class="btn btn-primary" onclick="pullCustom()">Download</button>
+      </div>
+      <div class="prog-wrap" id="custom-prog">
+        <div class="prog-bar"><div class="prog-fill" id="custom-fill"></div></div>
+        <div class="prog-label" id="custom-label"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="search-wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input id="search" type="text" placeholder="Search models…" oninput="renderGrid()" />
+      </div>
+      <div class="chips">
+        <button class="chip active" data-filter="all"       onclick="setFilter(this)">All</button>
+        <button class="chip"        data-filter="text"      onclick="setFilter(this)">Text</button>
+        <button class="chip"        data-filter="code"      onclick="setFilter(this)">Code</button>
+        <button class="chip"        data-filter="vision"    onclick="setFilter(this)">Vision</button>
+        <button class="chip"        data-filter="embedding" onclick="setFilter(this)">Embedding</button>
+        <button class="chip"        data-filter="fast"      onclick="setFilter(this)">Fast (&lt;2 GB)</button>
+        <button class="chip"        data-filter="large"     onclick="setFilter(this)">Large</button>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <!-- ── Installed tab ──────────────────────────────────────────────────── -->
+  <div id="tab-installed" style="display:none">
+    <div class="installed-list" id="inst-list">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+/* ── State ─────────────────────────────────────────────────────────────── */
+let catalog = [];
+let localModels = [];      // raw array from /api/local
+let localSet   = new Set(); // model names for quick lookup
+let filter = 'all';
+const pulling  = new Set();
+
+/* ── Boot ──────────────────────────────────────────────────────────────── */
+async function init() {
+  // fetch config (webui URL) and model data in parallel
+  const [cfg] = await Promise.all([
+    fetch('/api/config').then(r => r.json()).catch(() => ({})),
+    fetchCatalog(),
+    fetchLocal(),
+  ]);
+  if (cfg.webui_url) document.getElementById('webui-link').href = cfg.webui_url;
+  renderGrid();
+}
+
+async function fetchCatalog() {
+  const d = await fetch('/api/catalog').then(r => r.json()).catch(() => ({ models: [] }));
+  catalog = d.models || [];
+}
+
+async function fetchLocal() {
+  try {
+    const d = await fetch('/api/local').then(r => { if (!r.ok) throw r; return r.json(); });
+    localModels = d.models || [];
+    localSet = new Set(localModels.map(m => m.name));
+    setOnline(true, `${localModels.length} model${localModels.length !== 1 ? 's' : ''} installed`);
+    renderInstalled();
+  } catch {
+    setOnline(false, 'Ollama offline');
+    localModels = [];
+    localSet = new Set();
+    renderInstalled();
+  }
+}
+
+function setOnline(online, text) {
+  document.getElementById('dot').className = 'dot ' + (online ? 'online' : 'offline');
+  document.getElementById('status-text').textContent = text;
+}
+
+/* ── Helpers ───────────────────────────────────────────────────────────── */
+function isInstalled(id) {
+  // "mistral" matches "mistral:latest", exact "llama3.2:3b" matches itself
+  return localSet.has(id) || localSet.has(id + ':latest');
+}
+
+function fmtSize(mb) {
+  if (mb >= 1000) return (mb / 1000).toFixed(1) + ' GB';
+  return mb + ' MB';
+}
+
+function safeKey(id) { return id.replace(/[^a-z0-9]/gi, '_'); }
+
+/* ── Grid rendering ────────────────────────────────────────────────────── */
+function renderGrid() {
+  const q   = document.getElementById('search').value.toLowerCase();
+  const grid = document.getElementById('grid');
+
+  const items = catalog.filter(m => {
+    const matchQ = !q
+      || m.name.toLowerCase().includes(q)
+      || m.id.toLowerCase().includes(q)
+      || m.desc.toLowerCase().includes(q);
+    const matchF = filter === 'all' || m.tags.includes(filter);
+    return matchQ && matchF;
+  });
+
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No models match your search.</div>';
+    return;
+  }
+
+  grid.innerHTML = items.map(m => {
+    const inst   = isInstalled(m.id);
+    const isPull = pulling.has(m.id);
+    const k      = safeKey(m.id);
+    const tags   = m.tags.map(t => `<span class="tag tag-${t}">${t}</span>`).join('');
+
+    const actions = inst
+      ? `<button class="btn btn-success" disabled>✓ Installed</button>
+         <button class="btn btn-danger" onclick="deleteModel('${m.id}')">Delete</button>`
+      : `<button class="btn btn-primary" id="btn-${k}"
+           onclick="pullModel('${m.id}')" ${isPull ? 'disabled' : ''}>
+           ${isPull ? 'Downloading…' : 'Download'}
+         </button>`;
+
+    return `
+    <div class="card${inst ? ' installed' : ''}" id="card-${k}">
+      <div class="card-head">
+        <div class="card-name">${m.name}</div>
+        <div class="card-size">${fmtSize(m.size_mb)}</div>
+      </div>
+      <div class="card-desc">${m.desc}</div>
+      <div class="card-tags">${tags}</div>
+      <div class="prog-wrap" id="pw-${k}">
+        <div class="prog-bar"><div class="prog-fill" id="pf-${k}"></div></div>
+        <div class="prog-label" id="pl-${k}"></div>
+      </div>
+      <div class="card-actions">${actions}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Installed tab ─────────────────────────────────────────────────────── */
+function renderInstalled() {
+  const el = document.getElementById('inst-list');
+  if (!localModels.length) {
+    el.innerHTML = '<div class="empty">No models installed yet.<br>Go to Browse Catalog to download one.</div>';
+    return;
+  }
+  el.innerHTML = localModels.map(m => {
+    const gb  = m.size ? (m.size / 1e9).toFixed(2) + ' GB' : '—';
+    const dat = m.modified_at ? new Date(m.modified_at).toLocaleDateString() : '';
+    return `
+    <div class="inst-item">
+      <div>
+        <div class="inst-name">${m.name}</div>
+        <div class="inst-meta">${gb}${dat ? ' · ' + dat : ''}</div>
+      </div>
+      <button class="btn btn-danger" onclick="deleteModel('${m.name}')">Delete</button>
+    </div>`;
+  }).join('');
+}
+
+/* ── Pull ──────────────────────────────────────────────────────────────── */
+async function pullModel(id) {
+  pulling.add(id);
+  renderGrid();
+  const k = safeKey(id);
+  await _doPull(id, `pw-${k}`, `pf-${k}`, `pl-${k}`);
+  pulling.delete(id);
+  await fetchLocal();
+  renderGrid();
+}
+
+async function pullCustom() {
+  const input = document.getElementById('custom-input');
+  const id = input.value.trim();
+  if (!id) return;
+  input.disabled = true;
+  await _doPull(id, 'custom-prog', 'custom-fill', 'custom-label');
+  input.disabled = false;
+  input.value = '';
+  await fetchLocal();
+  renderGrid();
+}
+
+async function _doPull(id, progId, fillId, labelId) {
+  const pw = document.getElementById(progId);
+  const pf = document.getElementById(fillId);
+  const pl = document.getElementById(labelId);
+  if (pw) pw.classList.add('show');
+
+  try {
+    const res = await fetch(`/api/pull/${encodeURIComponent(id)}`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const line of decoder.decode(value).split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (pl) pl.textContent = d.status || '';
+          if (d.total && d.completed && pf)
+            pf.style.width = Math.round(d.completed / d.total * 100) + '%';
+          if (d.status === 'done' || d.status === 'success') break outer;
+        } catch { /* ignore parse errors */ }
+      }
+    }
+    toast(`${id} downloaded`, 'ok');
+  } catch (e) {
+    toast(`Download failed: ${e.message}`, 'err');
+  }
+
+  if (pw) pw.classList.remove('show');
+  if (pf) pf.style.width = '0%';
+  if (pl) pl.textContent = '';
+}
+
+/* ── Delete ────────────────────────────────────────────────────────────── */
+async function deleteModel(name) {
+  if (!confirm(`Delete "${name}"?\n\nThis will free disk space but you will need to re-download it to use it again.`)) return;
+  try {
+    const r = await fetch(`/api/model/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    toast(`${name} deleted`, 'ok');
+    await fetchLocal();
+    renderGrid();
+  } catch (e) {
+    toast(`Delete failed: ${e.message}`, 'err');
+  }
+}
+
+/* ── Filters / tabs ────────────────────────────────────────────────────── */
+function setFilter(el) {
+  filter = el.dataset.filter;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderGrid();
+}
+
+function showTab(name) {
+  document.getElementById('tab-browse').style.display    = name === 'browse'    ? '' : 'none';
+  document.getElementById('tab-installed').style.display = name === 'installed' ? '' : 'none';
+  document.getElementById('tab-browse-btn').classList.toggle('active',    name === 'browse');
+  document.getElementById('tab-installed-btn').classList.toggle('active', name === 'installed');
+}
+
+/* ── Toast ─────────────────────────────────────────────────────────────── */
+let _toastTimer;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+/* ── Auto-refresh installed list every 15 s ─────────────────────────────── */
+setInterval(async () => { await fetchLocal(); renderGrid(); }, 15000);
+
+init();
+</script>
+</body>
+</html>

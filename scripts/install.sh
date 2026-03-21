@@ -17,6 +17,7 @@
 #   --webui-port PORT Host port for the Open WebUI chat UI      (default: 45213)
 #   --version   TAG   Ollama version tag                        (default: latest)
 #   --branch    NAME  Git branch to clone when running via curl (auto-detected if omitted)
+#   --recreate        Force-recreate all containers even if they already exist
 # =============================================================================
 
 set -euo pipefail
@@ -47,7 +48,9 @@ REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 # Branch is auto-detected below; override with --branch or the REPO_BRANCH env var.
 REPO_BRANCH="${REPO_BRANCH:-}"
 DOZZLE_PORT="${DOZZLE_PORT:-9999}"
+MODEL_MANAGER_PORT="${MODEL_MANAGER_PORT:-45214}"
 COMPOSE_PROJECT="olama"
+RECREATE_CONTAINERS=false
 
 # ── Color helpers ──────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -65,14 +68,16 @@ while [[ $# -gt 0 ]]; do
     --webui-port) WEBUI_PORT="$2";    shift 2 ;;
     --version)    OLLAMA_VERSION="$2"; shift 2 ;;
     --branch)     REPO_BRANCH="$2";   shift 2 ;;
+    --recreate)   RECREATE_CONTAINERS=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [--data-dir DIR] [--port PORT] [--webui-port PORT] [--version TAG] [--branch NAME]"
+      echo "Usage: $0 [--data-dir DIR] [--port PORT] [--webui-port PORT] [--version TAG] [--branch NAME] [--recreate]"
       echo
       echo "  --data-dir   DIR   Storage root for models, chat history, config (default: /opt/olama)"
       echo "  --port       PORT  Host port for Ollama API   (default: 11434)"
       echo "  --webui-port PORT  Host port for Open WebUI   (default: 45213)"
       echo "  --version    TAG   Ollama image tag           (default: latest)"
       echo "  --branch     NAME  Git branch for curl install (default: main)"
+      echo "  --recreate         Force-recreate all containers (default: preserve existing)"
       exit 0 ;;
     *) warn "Unknown option: $1"; shift ;;
   esac
@@ -288,13 +293,14 @@ fi
 # Always stamp install-time values so re-runs and upgrades stay consistent.
 # Everything else in the file (API keys, model names, feature flags, etc.) is left untouched.
 _stamp_env "$ENV_FILE" \
-  DATA_DIR        "${DATA_DIR}" \
-  OLLAMA_PORT     "${OLLAMA_PORT}" \
-  WEBUI_PORT      "${WEBUI_PORT}" \
-  DOZZLE_PORT     "${DOZZLE_PORT}" \
-  OLLAMA_VERSION  "${OLLAMA_VERSION}" \
-  VIDEO_GID       "${VIDEO_GID}" \
-  RENDER_GID      "${RENDER_GID}"
+  DATA_DIR             "${DATA_DIR}" \
+  OLLAMA_PORT          "${OLLAMA_PORT}" \
+  WEBUI_PORT           "${WEBUI_PORT}" \
+  DOZZLE_PORT          "${DOZZLE_PORT}" \
+  MODEL_MANAGER_PORT   "${MODEL_MANAGER_PORT}" \
+  OLLAMA_VERSION       "${OLLAMA_VERSION}" \
+  VIDEO_GID            "${VIDEO_GID}" \
+  RENDER_GID           "${RENDER_GID}"
 success ".env ready at ${ENV_FILE}"
 info "Review and adjust ${ENV_FILE} at any time — then run: docker compose up -d"
 
@@ -305,8 +311,8 @@ info "Review and adjust ${ENV_FILE} at any time — then run: docker compose up 
 # devices on the same network can connect.
 sep
 info "Checking host firewall for LAN access..."
-_fw_ports=("${WEBUI_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}")
-_fw_labels=("Open WebUI (chat)" "Ollama API" "Dozzle (logs)")
+_fw_ports=("${WEBUI_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}" "${MODEL_MANAGER_PORT}")
+_fw_labels=("Open WebUI (chat)" "Ollama API" "Dozzle (logs)" "Model Manager")
 _fw_opened=()
 
 if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
@@ -357,9 +363,13 @@ success "Intel GPU image built."
 # ── Pull any missing public images ────────────────────────────────────────────
 sep
 info "Checking service containers..."
-for svc in open-webui searxng pipelines dozzle; do
+for svc in open-webui searxng pipelines dozzle model-manager; do
   cname="olama-${svc}"
-  if docker inspect "$cname" &>/dev/null; then
+  if $RECREATE_CONTAINERS; then
+    info "  $cname — --recreate set, pulling latest image..."
+    COMPOSE_ANSI=never $COMPOSE_CMD pull "$svc"
+    success "  $cname image ready."
+  elif docker inspect "$cname" &>/dev/null; then
     info "  $cname — already installed, skipping"
   else
     info "  $cname — not found, pulling image..."
@@ -370,8 +380,13 @@ done
 
 # ── Start the full stack ───────────────────────────────────────────────────────
 sep
-info "Starting Olama stack (5 containers)..."
-$COMPOSE_CMD up -d
+info "Starting Olama stack (6 containers)..."
+if $RECREATE_CONTAINERS; then
+  info "(--recreate: existing containers will be replaced)"
+  $COMPOSE_CMD up -d --force-recreate
+else
+  $COMPOSE_CMD up -d --no-recreate
+fi
 echo
 
 # ── Wait for Ollama to become ready ───────────────────────────────────────────
@@ -410,26 +425,33 @@ _lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i==
 sep
 success "Olama stack is running!"
 echo
-echo "  Chat UI     :  http://localhost:${WEBUI_PORT}"
-echo "  Ollama API  :  http://localhost:${OLLAMA_PORT}"
-echo "  Log viewer  :  http://localhost:${DOZZLE_PORT}  (Dozzle — live logs for all containers)"
+echo "  Chat UI        :  http://localhost:${WEBUI_PORT}"
+echo "  Model Manager  :  http://localhost:${MODEL_MANAGER_PORT}  (search, download, delete models)"
+echo "  Ollama API     :  http://localhost:${OLLAMA_PORT}"
+echo "  Log viewer     :  http://localhost:${DOZZLE_PORT}  (Dozzle — live logs for all containers)"
 if [[ -n "$_lan_ip" ]]; then
   echo
   echo "  From other devices on your network:"
-  echo "    Chat UI    →  http://${_lan_ip}:${WEBUI_PORT}"
-  echo "    Ollama API →  http://${_lan_ip}:${OLLAMA_PORT}"
-  echo "    Log viewer →  http://${_lan_ip}:${DOZZLE_PORT}"
+  echo "    Chat UI        →  http://${_lan_ip}:${WEBUI_PORT}"
+  echo "    Model Manager  →  http://${_lan_ip}:${MODEL_MANAGER_PORT}"
+  echo "    Ollama API     →  http://${_lan_ip}:${OLLAMA_PORT}"
+  echo "    Log viewer     →  http://${_lan_ip}:${DOZZLE_PORT}"
 fi
 echo
 echo "  Manage      :  cd ${INSTALL_DIR}"
 echo "  View logs   :  bash ${INSTALL_DIR}/scripts/logs.sh"
 echo "  Status      :  bash ${INSTALL_DIR}/scripts/logs.sh status"
+echo "  Update UI   :  bash ${INSTALL_DIR}/scripts/update.sh"
 echo "  Stop        :  cd ${INSTALL_DIR}/docker && docker compose down"
 echo
-echo "  Pull a model (example):"
-echo "    docker exec olama ollama pull mistral"
-echo "    docker exec olama ollama pull llama3.2:3b"
-echo "    docker exec olama ollama pull llava          # vision model"
+echo "  Pull a model (via Model Manager UI or CLI):"
+echo "    open  http://localhost:${MODEL_MANAGER_PORT}  (recommended — search, filter, one-click pull)"
+echo "    or:   docker exec olama ollama pull mistral"
+echo "          docker exec olama ollama pull llama3.2:3b"
+echo "          docker exec olama ollama pull llava          # vision model"
+echo
+echo "  If Open WebUI shows 'Ollama is running' instead of the chat UI:"
+echo "    bash ${INSTALL_DIR}/scripts/update.sh"
 echo
 echo "  Verify Intel GPU is in use (after pulling a model):"
 echo "    docker exec olama clinfo | grep -i 'device name'"
