@@ -176,42 +176,50 @@ async def get_config():
 
 @app.get("/api/health")
 async def health_check():
-    """Detailed Ollama connectivity diagnostic for the portal health panel."""
-    import time
-    result: dict = {
-        "ollama": {
-            "url": OLLAMA_URL,
-            "ok": False,
-            "version": None,
-            "latency_ms": None,
-            "error": None,
-            "error_type": None,
-        }
+    """Connectivity diagnostics for all internal stack services (Ollama, SearXNG, Pipelines)."""
+    import asyncio, time
+
+    # Internal services: (probe_url, include_version_field)
+    INTERNAL = {
+        "ollama":    (f"{OLLAMA_URL}/api/version", True),
+        "searxng":   ("http://searxng:8080/",       False),
+        "pipelines": ("http://pipelines:9099/",     False),
     }
-    t0 = time.monotonic()
-    try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            resp = await client.get(f"{OLLAMA_URL}/api/version")
-            result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
-            resp.raise_for_status()
-            result["ollama"]["ok"] = True
-            try:
-                result["ollama"]["version"] = resp.json().get("version")
-            except Exception:
-                pass
-    except httpx.ConnectError as e:
-        result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
-        result["ollama"]["error"] = str(e)
-        result["ollama"]["error_type"] = "ConnectError"
-    except httpx.TimeoutException:
-        result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
-        result["ollama"]["error"] = f"Connection timed out after 8 s (url: {OLLAMA_URL})"
-        result["ollama"]["error_type"] = "Timeout"
-    except Exception as exc:
-        result["ollama"]["latency_ms"] = round((time.monotonic() - t0) * 1000)
-        result["ollama"]["error"] = str(exc)
-        result["ollama"]["error_type"] = type(exc).__name__
-    return result
+
+    async def probe(key: str, url: str, want_version: bool) -> tuple[str, dict]:
+        base = url.rstrip("/api/version").rstrip("/")
+        entry: dict = {"url": base, "ok": False, "latency_ms": None,
+                       "error": None, "error_type": None}
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                resp = await client.get(url)
+                entry["latency_ms"] = round((time.monotonic() - t0) * 1000)
+                resp.raise_for_status()
+                entry["ok"] = True
+                if want_version:
+                    try:
+                        entry["version"] = resp.json().get("version")
+                    except Exception:
+                        pass
+        except httpx.ConnectError as exc:
+            entry["latency_ms"] = round((time.monotonic() - t0) * 1000)
+            entry["error"] = str(exc)
+            entry["error_type"] = "ConnectError"
+        except httpx.TimeoutException:
+            entry["latency_ms"] = round((time.monotonic() - t0) * 1000)
+            entry["error"] = "Connection timed out after 8 s"
+            entry["error_type"] = "Timeout"
+        except Exception as exc:
+            entry["latency_ms"] = round((time.monotonic() - t0) * 1000)
+            entry["error"] = str(exc)
+            entry["error_type"] = type(exc).__name__
+        return key, entry
+
+    pairs = await asyncio.gather(
+        *(probe(k, url, ver) for k, (url, ver) in INTERNAL.items())
+    )
+    return dict(pairs)
 
 
 @app.get("/api/catalog")

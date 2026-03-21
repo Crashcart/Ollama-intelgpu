@@ -585,61 +585,27 @@ function setStatus(state, text) {
 }
 
 /* ── Health check (Issues panel) ───────────────────────────── */
-// Ollama is checked via /api/health (CORS-safe, returns detailed diagnostics).
-// UI-only services use no-cors fetch — opaque response = up, throw = down.
+// Internal services (Ollama, SearXNG, Pipelines) are checked server-side via
+// one /api/health call to model-manager — no CORS issues, full diagnostics.
+// UI services (Open WebUI, Model Manager, Dozzle) use no-cors browser fetches.
 const SERVICES = [
-  { id: 'ollama',  name: 'Ollama API',    port: null,         path: '/api/health', mode: 'health' },
-  { id: 'webui',   name: 'Open WebUI',    port: PORTS.chat,   path: '/',           mode: 'nocors' },
-  { id: 'manager', name: 'Model Manager', port: PORTS.models, path: '/',           mode: 'nocors' },
-  { id: 'dozzle',  name: 'Log Viewer',    port: PORTS.logs,   path: '/',           mode: 'nocors' },
+  { id: 'ollama',    name: 'Ollama Engine', mode: 'server', healthKey: 'ollama' },
+  { id: 'searxng',   name: 'Web Search',    mode: 'server', healthKey: 'searxng' },
+  { id: 'pipelines', name: 'Pipelines',     mode: 'server', healthKey: 'pipelines' },
+  { id: 'webui',     name: 'Open WebUI',    mode: 'nocors', port: PORTS.chat },
+  { id: 'manager',   name: 'Model Manager', mode: 'nocors', port: PORTS.models },
+  { id: 'dozzle',    name: 'Log Viewer',    mode: 'nocors', port: PORTS.logs },
 ];
 
 let lastCheckResults = {};
 
-async function checkService(svc) {
-  const url = svc.mode === 'health'
-    ? `${svcUrl('models')}${svc.path}`
-    : `${proto}//${host}:${svc.port}${svc.path}`;
+// Browser-side: no-cors fetch (opaque success = up, throw = down)
+async function checkNoCors(svc) {
+  const url = `${proto}//${host}:${svc.port}/`;
   const t0 = Date.now();
-
   try {
-    if (svc.mode === 'health') {
-      // model-manager /api/health — returns detailed Ollama diagnostics
-      const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      const latency = Date.now() - t0;
-      if (!r.ok) {
-        let body = '';
-        try { body = await r.text(); } catch {}
-        let msg = `HTTP ${r.status}`;
-        try { const j = JSON.parse(body); if (j.detail) msg = j.detail; } catch {}
-        return { state: 'err', detail: msg, diagnostic: `URL: ${url}\nStatus: ${r.status} ${r.statusText}\nBody: ${body.slice(0, 400)}`, latency_ms: latency };
-      }
-      const d = await r.json();
-      if (!d.ollama.ok) {
-        return {
-          state: 'err',
-          detail: d.ollama.error_type || 'Not reachable',
-          diagnostic: [
-            `URL checked: ${d.ollama.url}/api/version`,
-            `Error type: ${d.ollama.error_type}`,
-            `Error: ${d.ollama.error}`,
-            `Latency: ${d.ollama.latency_ms} ms`,
-          ].join('\n'),
-          latency_ms: d.ollama.latency_ms,
-        };
-      }
-      return {
-        state: 'ok',
-        detail: `v${d.ollama.version || '?'} · ${d.ollama.latency_ms} ms`,
-        latency_ms: d.ollama.latency_ms,
-      };
-
-    } else {
-      // no-cors: opaque success = up; throw = down
-      await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(6000) });
-      return { state: 'ok', detail: `Responding · ${Date.now() - t0} ms` };
-    }
-
+    await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(6000) });
+    return { state: 'ok', detail: `Responding \u00b7 ${Date.now() - t0} ms` };
   } catch (e) {
     const latency = Date.now() - t0;
     const isTimeout = e.name === 'TimeoutError' || e.name === 'AbortError';
@@ -652,16 +618,66 @@ async function checkService(svc) {
   }
 }
 
+// Parse one entry from the /api/health JSON into a result object
+function parseServerEntry(d) {
+  if (!d) return { state: 'err', detail: 'No data' };
+  if (d.ok) {
+    const v = d.version ? `v${d.version} \u00b7 ` : '';
+    return { state: 'ok', detail: `${v}${d.latency_ms} ms`, latency_ms: d.latency_ms };
+  }
+  return {
+    state: 'err',
+    detail: d.error_type || 'Not reachable',
+    diagnostic: [
+      `URL checked: ${d.url}`,
+      `Error type:  ${d.error_type}`,
+      `Error:       ${d.error}`,
+      `Latency:     ${d.latency_ms} ms`,
+    ].join('\n'),
+    latency_ms: d.latency_ms,
+  };
+}
+
 async function runHealthCheck() {
   renderRows(SERVICES.map(s => ({ ...s, state: 'checking', detail: '' })));
   document.getElementById('issues-summary').className = 'issues-summary checking';
   document.getElementById('issues-summary').textContent = 'Checking\u2026';
 
-  const results = await Promise.all(SERVICES.map(checkService));
-  results.forEach((res, i) => { lastCheckResults[SERVICES[i].id] = res; });
-  renderRows(SERVICES.map((s, i) => ({ ...s, ...results[i] })));
+  // Fire server-side health + all no-cors checks concurrently
+  const healthUrl = `${svcUrl('models')}/api/health`;
+  const t0 = Date.now();
 
-  const anyErr = results.some(r => r.state === 'err');
+  const serverPromise = fetch(healthUrl, { signal: AbortSignal.timeout(12000) })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+    .catch(e => ({ _err: `${e.name}: ${e.message}`, _latency: Date.now() - t0 }));
+
+  const noCorsServices = SERVICES.filter(s => s.mode === 'nocors');
+  const [serverData, ...noCorsResults] = await Promise.all([
+    serverPromise,
+    ...noCorsServices.map(checkNoCors),
+  ]);
+
+  // Build resultMap
+  const resultMap = {};
+
+  for (const svc of SERVICES.filter(s => s.mode === 'server')) {
+    if (serverData._err) {
+      resultMap[svc.id] = {
+        state: 'err',
+        detail: 'Model Manager unreachable',
+        diagnostic: `URL: ${healthUrl}\nError: ${serverData._err}`,
+        latency_ms: serverData._latency,
+      };
+    } else {
+      resultMap[svc.id] = parseServerEntry(serverData[svc.healthKey]);
+    }
+  }
+  noCorsServices.forEach((svc, i) => { resultMap[svc.id] = noCorsResults[i]; });
+
+  SERVICES.forEach(svc => { lastCheckResults[svc.id] = resultMap[svc.id]; });
+  renderRows(SERVICES.map(svc => ({ ...svc, ...(resultMap[svc.id] || {}) })));
+
+  const anyErr = SERVICES.some(svc => resultMap[svc.id]?.state === 'err');
   const sum = document.getElementById('issues-summary');
   if (anyErr) {
     sum.className = 'issues-summary err';
@@ -692,14 +708,15 @@ async function runHealthCheck() {
 function renderRows(rows) {
   const list = document.getElementById('svc-list');
   list.innerHTML = rows.map(s => {
+    const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const sub = s.state === 'err' && s.diagnostic
-      ? `<span class="svc-detail-sub">${s.diagnostic.replace(/\n/g, ' &nbsp;|&nbsp; ')}</span>`
+      ? `<span class="svc-detail-sub">${esc(s.diagnostic).replace(/\n/g, '<br>')}</span>`
       : '';
     return `
     <div class="svc-row">
       <span class="svc-dot ${s.state || 'checking'}"></span>
-      <span class="svc-name">${s.name}</span>
-      <span class="svc-detail"><span>${s.detail || ''}</span>${sub}</span>
+      <span class="svc-name">${esc(s.name)}</span>
+      <span class="svc-detail"><span>${esc(s.detail || '')}</span>${sub}</span>
       ${s.port ? `<span class="svc-port">:${s.port}</span>` : ''}
     </div>`;
   }).join('');
