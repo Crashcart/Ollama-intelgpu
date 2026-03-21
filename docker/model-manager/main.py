@@ -16,10 +16,21 @@ from typing import AsyncGenerator
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Olama Model Manager", docs_url=None, redoc_url=None)
+
+# The portal (port 45200) fetches /api/health and /api/local cross-origin.
+# Without these headers the browser blocks the response body even though the
+# server is reachable (no-cors opaque fetches succeed but JSON reads don't).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
+)
 
 OLLAMA_URL  = os.environ.get("OLLAMA_BASE_URL", "http://olama:11434").rstrip("/")
 WEBUI_PORT  = os.environ.get("WEBUI_PORT", "45213")
