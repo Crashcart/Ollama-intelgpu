@@ -433,6 +433,8 @@ services:
     depends_on:
       olama:
         condition: service_healthy
+      uds-proxy:
+        condition: service_healthy
 
     labels:
       com.olama.category: "interface"
@@ -445,10 +447,14 @@ services:
 
     environment:
       - OLLAMA_BASE_URL=http://olama:11434
+      - OLLAMA_SOCKET=/sockets/ollama.sock
       # Port only — the browser constructs the full URL using its own hostname,
       # so the "Open WebUI" link works whether you access via localhost, LAN IP,
       # or a hostname like boris.local.
       - WEBUI_PORT=${WEBUI_PORT:-45213}
+
+    volumes:
+      - olama_sockets:/sockets
 
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
@@ -463,6 +469,117 @@ services:
         max-size: "${LOG_MAX_SIZE:-10m}"
         max-file: "${LOG_MAX_FILES:-5}"
         tag: "model-manager"
+
+    networks:
+      - olama_net
+
+# =============================================================================
+#  CATEGORY: AI CORE — UDS PROXY
+#  Purpose : Exposes Ollama's HTTP API over a Unix Domain Socket so that
+#            internal services (ghost-runner, model-manager) can connect
+#            without TCP stack overhead.  The socket file lives in the
+#            shared 'olama_sockets' named volume mounted by each consumer.
+#  Port    : none — communication is via /sockets/ollama.sock only
+# =============================================================================
+
+  uds-proxy:
+    build:
+      context: ./uds-proxy
+      dockerfile: Dockerfile
+    image: olama-uds-proxy:latest
+    container_name: olama-uds-proxy
+    restart: unless-stopped
+    depends_on:
+      olama:
+        condition: service_healthy
+
+    labels:
+      com.olama.category: "ai-core"
+      com.olama.description: "Unix Domain Socket proxy — Ollama API via /sockets/ollama.sock"
+      com.olama.data: "none"
+      com.olama.log: "none"
+
+    environment:
+      - SOCKET_PATH=/sockets/ollama.sock
+      - UPSTREAM_HOST=olama
+      - UPSTREAM_PORT=11434
+
+    volumes:
+      - olama_sockets:/sockets
+
+    # Healthy when the socket file exists and is a socket
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /sockets/ollama.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"
+        tag: "uds-proxy"
+
+    networks:
+      - olama_net
+
+# =============================================================================
+#  CATEGORY: INTERFACE — GHOST RUNNER
+#  Purpose : Background task generation with resume support.
+#            Submit a prompt; the server streams Ollama's response and saves
+#            every token to SQLite. Close your browser — the generation
+#            continues. Reconnect and stream from any sequence position to
+#            replay the full output.
+#  Port    : 45215 → http://localhost:45215
+#  Data    : ${DATA_DIR}/ghost — SQLite DB (tasks + tokens)
+# =============================================================================
+
+  ghost-runner:
+    build:
+      context: ./ghost-runner
+      dockerfile: Dockerfile
+    image: olama-ghost-runner:latest
+    container_name: olama-ghost-runner
+    restart: unless-stopped
+    depends_on:
+      olama:
+        condition: service_healthy
+      uds-proxy:
+        condition: service_healthy
+
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "Ghost Runner — background AI task generation with resume"
+      com.olama.data: "${DATA_DIR:-/opt/olama}/ghost"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/ghost-runner.log"
+
+    ports:
+      - "${GHOST_RUNNER_PORT:-45215}:8080"
+
+    environment:
+      - OLLAMA_BASE_URL=http://olama:11434
+      - OLLAMA_SOCKET=/sockets/ollama.sock
+      - DB_PATH=/data/ghost.db
+
+    volumes:
+      - ${DATA_DIR:-/opt/olama}/ghost:/data
+      - olama_sockets:/sockets
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "ghost-runner"
 
     networks:
       - olama_net
@@ -491,6 +608,7 @@ services:
     depends_on:
       - open-webui
       - model-manager
+      - ghost-runner
       - dozzle
 
     labels:
@@ -508,6 +626,7 @@ services:
       # hardcoded, so boris.local, a LAN IP, and localhost all work the same way.
       - WEBUI_PORT=${WEBUI_PORT:-45213}
       - MODEL_MANAGER_PORT=${MODEL_MANAGER_PORT:-45214}
+      - GHOST_RUNNER_PORT=${GHOST_RUNNER_PORT:-45215}
       - DOZZLE_PORT=${DOZZLE_PORT:-9999}
 
     healthcheck:
@@ -600,3 +719,11 @@ networks:
     driver: bridge
     labels:
       com.olama.description: "Internal network — olama, open-webui, searxng, pipelines, dozzle"
+
+# Shared volume for the Unix Domain Socket file.
+# olama_sockets is mounted by uds-proxy (creates the socket) and by
+# ghost-runner and model-manager (connect to it).  The socket file is
+# recreated on each uds-proxy start so persistence is not required.
+volumes:
+  olama_sockets:
+    driver: local

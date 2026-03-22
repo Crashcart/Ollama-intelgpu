@@ -32,8 +32,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-OLLAMA_URL  = os.environ.get("OLLAMA_BASE_URL", "http://olama:11434").rstrip("/")
-WEBUI_PORT  = os.environ.get("WEBUI_PORT", "45213")
+OLLAMA_URL    = os.environ.get("OLLAMA_BASE_URL", "http://olama:11434").rstrip("/")
+OLLAMA_SOCKET = os.environ.get("OLLAMA_SOCKET", "")
+WEBUI_PORT    = os.environ.get("WEBUI_PORT", "45213")
+
+
+def _make_ollama_client(**kwargs) -> httpx.AsyncClient:
+    """
+    Return an httpx.AsyncClient pointed at Ollama.
+
+    Connects via Unix Domain Socket when OLLAMA_SOCKET is set and the
+    socket file is present; falls back to TCP otherwise.
+    """
+    if OLLAMA_SOCKET and os.path.exists(OLLAMA_SOCKET):
+        return httpx.AsyncClient(
+            transport=httpx.AsyncHTTPTransport(uds=OLLAMA_SOCKET),
+            base_url="http://ollama",
+            **kwargs,
+        )
+    return httpx.AsyncClient(base_url=OLLAMA_URL, **kwargs)
 
 # ---------------------------------------------------------------------------
 # Model catalog — curated list of popular Ollama models
@@ -189,6 +206,11 @@ async def get_config():
 async def health_check():
     """Connectivity diagnostics for all internal stack services (Ollama, SearXNG, Pipelines)."""
     import asyncio, time
+    from urllib.parse import urlparse
+
+    # Probe timeout: must be well under the portal's 12 s browser fetch timeout.
+    # All 3 probes run concurrently, so worst-case response time ≈ PROBE_TIMEOUT.
+    PROBE_TIMEOUT = 4  # seconds
 
     # Internal services: (probe_url, include_version_field)
     INTERNAL = {
@@ -198,12 +220,13 @@ async def health_check():
     }
 
     async def probe(key: str, url: str, want_version: bool) -> tuple[str, dict]:
-        base = url.rstrip("/api/version").rstrip("/")
+        parsed = urlparse(url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
         entry: dict = {"url": base, "ok": False, "latency_ms": None,
                        "error": None, "error_type": None}
         t0 = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=8) as client:
+            async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as client:
                 resp = await client.get(url)
                 entry["latency_ms"] = round((time.monotonic() - t0) * 1000)
                 resp.raise_for_status()
@@ -219,7 +242,7 @@ async def health_check():
             entry["error_type"] = "ConnectError"
         except httpx.TimeoutException:
             entry["latency_ms"] = round((time.monotonic() - t0) * 1000)
-            entry["error"] = "Connection timed out after 8 s"
+            entry["error"] = f"Connection timed out after {PROBE_TIMEOUT} s"
             entry["error_type"] = "Timeout"
         except Exception as exc:
             entry["latency_ms"] = round((time.monotonic() - t0) * 1000)
@@ -242,8 +265,8 @@ async def catalog():
 async def local_models():
     """Return models currently installed in Ollama."""
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+        async with _make_ollama_client(timeout=10) as client:
+            resp = await client.get("/api/tags")
             resp.raise_for_status()
             return resp.json()
     except httpx.ConnectError:
@@ -257,10 +280,10 @@ async def pull_model(model: str):
     """Pull a model from the Ollama registry, streaming SSE progress."""
 
     async def _stream() -> AsyncGenerator[str, None]:
-        async with httpx.AsyncClient(timeout=None) as client:
+        async with _make_ollama_client(timeout=None) as client:
             async with client.stream(
                 "POST",
-                f"{OLLAMA_URL}/api/pull",
+                "/api/pull",
                 json={"name": model},
             ) as resp:
                 async for line in resp.aiter_lines():
@@ -297,11 +320,8 @@ async def search_registry(q: str = "", p: int = 1):
 async def delete_model(model: str):
     """Delete a locally installed model."""
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.delete(
-                f"{OLLAMA_URL}/api/delete",
-                json={"name": model},
-            )
+        async with _make_ollama_client(timeout=30) as client:
+            resp = await client.delete("/api/delete", json={"name": model})
             resp.raise_for_status()
             return {"status": "deleted", "model": model}
     except Exception as exc:

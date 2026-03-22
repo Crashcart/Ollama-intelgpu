@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ghost Runner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0d0d0d;
+      --nav:        #111714;
+      --nav-border: #1e2a1e;
+      --surface:    #141a14;
+      --surface2:   #111511;
+      --border:     #243024;
+      --text:       #dde8dd;
+      --dim:        #5a6b5a;
+      --accent:     #4ade80;
+      --accent-bg:  rgba(74,222,128,.10);
+      --accent-bdr: rgba(74,222,128,.28);
+      --green:      #4ade80;
+      --red:        #f87171;
+      --yellow:     #fbbf24;
+      --blue:       #60a5fa;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    body { display: flex; flex-direction: column; }
+
+    /* ── Top bar ─────────────────────────────────────────────── */
+    .topbar {
+      height: 48px;
+      min-height: 48px;
+      background: var(--nav);
+      border-bottom: 1px solid var(--nav-border);
+      display: flex;
+      align-items: center;
+      padding: 0 1rem;
+      gap: .75rem;
+    }
+
+    .logo {
+      font-weight: 700;
+      font-size: .95rem;
+      letter-spacing: -.3px;
+    }
+    .logo em { color: var(--accent); font-style: normal; }
+
+    .spacer { flex: 1; }
+
+    .topbar-badge {
+      font-size: .75rem;
+      color: var(--dim);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .38rem .85rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent-bdr);
+      background: var(--accent-bg);
+      color: var(--accent);
+      font-size: .8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: rgba(74,222,128,.18); }
+    .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+    .btn-ghost {
+      border-color: var(--border);
+      background: transparent;
+      color: var(--dim);
+    }
+    .btn-ghost:hover { color: var(--text); background: rgba(255,255,255,.05); }
+
+    .btn-danger {
+      border-color: rgba(248,113,113,.3);
+      background: rgba(248,113,113,.08);
+      color: var(--red);
+    }
+    .btn-danger:hover { background: rgba(248,113,113,.16); }
+
+    /* ── Main layout ─────────────────────────────────────────── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar (task list) ─────────────────────────────────── */
+    .sidebar {
+      width: 280px;
+      min-width: 220px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .sidebar-hdr {
+      padding: .6rem .75rem .5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sidebar-hdr-label {
+      font-size: .7rem;
+      font-weight: 600;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .task-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: .35rem 0;
+    }
+    .task-list::-webkit-scrollbar { width: 4px; }
+    .task-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .task-item {
+      padding: .55rem .75rem;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      transition: background .12s;
+      display: flex;
+      flex-direction: column;
+      gap: .2rem;
+    }
+    .task-item:hover { background: rgba(255,255,255,.03); }
+    .task-item.active {
+      background: var(--accent-bg);
+      border-left-color: var(--accent);
+    }
+
+    .task-item-top {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--dim);
+    }
+    .status-dot.running      { background: var(--yellow); animation: pulse .9s ease-in-out infinite; }
+    .status-dot.complete     { background: var(--green);  box-shadow: 0 0 4px rgba(74,222,128,.5); }
+    .status-dot.error        { background: var(--red); }
+    .status-dot.interrupted  { background: var(--blue); }
+    @keyframes pulse { 50% { opacity: .35; } }
+
+    .task-model {
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .task-prompt-preview {
+      font-size: .71rem;
+      color: var(--dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding-left: 1.1rem;
+    }
+
+    .task-meta {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding-left: 1.1rem;
+    }
+    .task-age {
+      font-size: .68rem;
+      color: var(--dim);
+    }
+    .task-tokens {
+      font-size: .66rem;
+      color: var(--dim);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0 .3rem;
+      line-height: 1.6;
+    }
+
+    .empty-list {
+      padding: 2rem 1rem;
+      text-align: center;
+      color: var(--dim);
+      font-size: .8rem;
+      line-height: 1.7;
+    }
+
+    /* ── Detail panel ────────────────────────────────────────── */
+    .detail {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .detail-hdr {
+      padding: .65rem 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      flex-wrap: wrap;
+    }
+
+    .detail-title {
+      font-size: .88rem;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .status-badge {
+      font-size: .7rem;
+      font-weight: 600;
+      padding: .18rem .55rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .status-badge.running     { background: rgba(251,191,36,.12); color: var(--yellow); }
+    .status-badge.complete    { background: rgba(74,222,128,.10); color: var(--green); }
+    .status-badge.error       { background: rgba(248,113,113,.10); color: var(--red); }
+    .status-badge.interrupted { background: rgba(96,165,250,.10); color: var(--blue); }
+
+    .detail-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+    /* ── Voice controls ──────────────────────────────────────── */
+    .btn-voice {
+      border-color: rgba(96,165,250,.3);
+      background: rgba(96,165,250,.07);
+      color: var(--blue);
+    }
+    .btn-voice:hover  { background: rgba(96,165,250,.14); }
+    .btn-voice.active {
+      background: rgba(96,165,250,.18);
+      border-color: rgba(96,165,250,.55);
+      color: #93c5fd;
+    }
+
+    .btn-mic {
+      border-color: rgba(248,113,113,.28);
+      background: rgba(248,113,113,.06);
+      color: var(--red);
+      padding: .38rem .55rem;
+    }
+    .btn-mic:hover    { background: rgba(248,113,113,.14); }
+    .btn-mic.active   {
+      background: rgba(248,113,113,.18);
+      border-color: rgba(248,113,113,.55);
+      animation: mic-pulse 1.1s ease-in-out infinite;
+    }
+    @keyframes mic-pulse { 50% { box-shadow: 0 0 8px rgba(248,113,113,.5); } }
+    .btn-mic svg { width: 13px; height: 13px; }
+
+    /* Prompt field wrapper (for mic button overlay) */
+    .prompt-wrap { position: relative; }
+    .prompt-wrap textarea { width: 100%; padding-right: 2.8rem; }
+    .prompt-mic {
+      position: absolute;
+      right: .5rem;
+      bottom: .5rem;
+      padding: .28rem;
+      border-radius: 5px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--dim);
+      cursor: pointer;
+      transition: color .15s, background .15s;
+      display: flex;
+      align-items: center;
+    }
+    .prompt-mic svg { width: 15px; height: 15px; }
+    .prompt-mic:hover { color: var(--red); background: rgba(248,113,113,.08); }
+    .prompt-mic.active {
+      color: var(--red);
+      background: rgba(248,113,113,.14);
+      border-color: rgba(248,113,113,.4);
+      animation: mic-pulse 1.1s ease-in-out infinite;
+    }
+    .prompt-mic.hidden { display: none; }
+
+    .voice-hint {
+      font-size: .68rem;
+      color: var(--dim);
+      margin-top: -.2rem;
+    }
+
+    .detail-body {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .detail-prompt {
+      padding: .65rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      font-size: .78rem;
+      color: var(--dim);
+      line-height: 1.55;
+    }
+    .detail-prompt strong { color: var(--text); font-weight: 500; }
+
+    .output-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: .85rem 1rem;
+      font-family: monospace;
+      font-size: .8rem;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .output-wrap::-webkit-scrollbar { width: 4px; }
+    .output-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .output-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 1em;
+      background: var(--accent);
+      vertical-align: text-bottom;
+      animation: blink .9s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .output-status {
+      font-family: sans-serif;
+      font-size: .74rem;
+      margin-top: .5rem;
+      color: var(--dim);
+    }
+    .output-status.err { color: var(--red); }
+    .output-status.interrupted { color: var(--blue); }
+
+    /* Empty / placeholder states */
+    .detail-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: .6rem;
+      color: var(--dim);
+      font-size: .82rem;
+    }
+    .detail-empty svg {
+      width: 36px;
+      height: 36px;
+      opacity: .25;
+    }
+
+    /* ── New Task modal ──────────────────────────────────────── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.72);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.4rem;
+      width: min(560px, calc(100vw - 2rem));
+      display: flex;
+      flex-direction: column;
+      gap: .9rem;
+    }
+    .modal-title {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .field { display: flex; flex-direction: column; gap: .35rem; }
+    .field label {
+      font-size: .75rem;
+      font-weight: 500;
+      color: var(--dim);
+    }
+
+    .field select, .field textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: .83rem;
+      padding: .5rem .7rem;
+      outline: none;
+      font-family: inherit;
+      transition: border-color .15s;
+    }
+    .field select:focus,
+    .field textarea:focus  { border-color: var(--accent-bdr); }
+    .field textarea {
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.55;
+    }
+
+    .modal-foot {
+      display: flex;
+      gap: .5rem;
+      justify-content: flex-end;
+      margin-top: .2rem;
+    }
+
+    /* ── Token counter ───────────────────────────────────────── */
+    .token-bar {
+      padding: .3rem 1rem;
+      border-top: 1px solid var(--border);
+      font-size: .7rem;
+      color: var(--dim);
+      display: flex;
+      gap: 1rem;
+    }
+    .token-bar span { font-variant-numeric: tabular-nums; }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 580px) {
+      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 220px; }
+      .main { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <span class="logo">Ghost <em>Runner</em></span>
+  <span class="topbar-badge" id="task-count">0 tasks</span>
+  <div class="spacer"></div>
+  <button class="btn" onclick="openModal()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+         stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    New Task
+  </button>
+</div>
+
+<!-- Main layout -->
+<div class="main">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-hdr">
+      <span class="sidebar-hdr-label">Tasks</span>
+      <button class="btn btn-ghost" style="padding:.2rem .5rem;font-size:.7rem" onclick="loadTasks()">Refresh</button>
+    </div>
+    <div class="task-list" id="task-list">
+      <div class="empty-list">No tasks yet.<br>Click <strong>New Task</strong> to start.</div>
+    </div>
+  </div>
+
+  <!-- Detail panel -->
+  <div class="detail" id="detail">
+    <div class="detail-empty" id="detail-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span>Select a task to view output</span>
+    </div>
+    <div id="detail-content" style="display:none;flex:1;flex-direction:column;overflow:hidden;display:none">
+      <div class="detail-hdr">
+        <span class="detail-title" id="detail-model"></span>
+        <span class="status-badge" id="detail-status-badge"></span>
+        <div class="detail-actions">
+          <button class="btn btn-voice" id="btn-tts" onclick="toggleTTS()" title="Voice output: off">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+            Voice
+          </button>
+          <button class="btn btn-ghost" id="btn-copy" onclick="copyOutput()" style="display:none">Copy</button>
+          <button class="btn btn-ghost" id="btn-rerun" onclick="rerunTask()" style="display:none">Re-run</button>
+          <button class="btn btn-danger" id="btn-delete" onclick="deleteActiveTask()">Delete</button>
+        </div>
+      </div>
+      <div class="detail-prompt" id="detail-prompt"></div>
+      <div class="detail-body">
+        <div class="output-wrap" id="output-wrap"></div>
+      </div>
+      <div class="token-bar">
+        <span id="token-count-bar">0 tokens</span>
+        <span id="stream-status-bar"></span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- New Task modal -->
+<div class="modal-backdrop" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <div class="modal-title">New Background Task</div>
+    <div class="field">
+      <label for="model-select">Model</label>
+      <select id="model-select">
+        <option value="">Loading models…</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="prompt-input">Prompt</label>
+      <div class="prompt-wrap">
+        <textarea id="prompt-input" placeholder="Enter your prompt here…" rows="6"></textarea>
+        <button class="prompt-mic hidden" id="prompt-mic-btn" onclick="toggleMic()" title="Speak prompt"
+                type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8"  y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+      </div>
+      <div class="voice-hint" id="voice-hint" style="display:none">
+        Click the mic to dictate — works in Chrome and Edge.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="submitTask()">Start Task</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ───────────────────────────────────────────────────────────────
+   State
+─────────────────────────────────────────────────────────────── */
+let tasks        = [];       // cached task list
+let activeTaskId = null;     // currently displayed task id
+let activeStream = null;     // AbortController for the active SSE fetch
+let lastSeq      = -1;       // highest seq received for active task
+let tokenCount   = 0;        // tokens displayed for active task
+let autoScroll   = true;     // scroll to bottom while streaming
+let rerunModel   = '';
+let rerunPrompt  = '';
+
+/* ───────────────────────────────────────────────────────────────
+   Init
+─────────────────────────────────────────────────────────────── */
+async function init() {
+  await loadTasks();
+  await loadModels();
+  initSTT();
+  setInterval(loadTasks, 30000);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Task list
+─────────────────────────────────────────────────────────────── */
+async function loadTasks() {
+  try {
+    const r = await fetch('/api/tasks');
+    const d = await r.json();
+    tasks = d.tasks || [];
+    renderTaskList();
+    updateTaskCount();
+    // If the active task updated, refresh its header
+    if (activeTaskId) {
+      const t = tasks.find(x => x.id === activeTaskId);
+      if (t) updateDetailHeader(t);
+    }
+  } catch (e) {
+    console.warn('loadTasks failed', e);
+  }
+}
+
+function renderTaskList() {
+  const el = document.getElementById('task-list');
+  if (!tasks.length) {
+    el.innerHTML = '<div class="empty-list">No tasks yet.<br>Click <strong>New Task</strong> to start.</div>';
+    return;
+  }
+  el.innerHTML = tasks.map(t => {
+    const age     = formatAge(t.created_at);
+    const preview = t.prompt.slice(0, 60) + (t.prompt.length > 60 ? '…' : '');
+    const active  = t.id === activeTaskId ? ' active' : '';
+    return `
+      <div class="task-item${active}" onclick="openTask('${t.id}')">
+        <div class="task-item-top">
+          <span class="status-dot ${t.status}"></span>
+          <span class="task-model">${esc(t.model)}</span>
+        </div>
+        <div class="task-prompt-preview">${esc(preview)}</div>
+        <div class="task-meta">
+          <span class="task-age">${age}</span>
+          <span class="task-tokens">${t.token_count} tok</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function updateTaskCount() {
+  const running = tasks.filter(t => t.status === 'running').length;
+  document.getElementById('task-count').textContent =
+    tasks.length === 0 ? 'No tasks' :
+    running > 0 ? `${tasks.length} tasks · ${running} running` :
+    `${tasks.length} task${tasks.length !== 1 ? 's' : ''}`;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Open + stream a task
+─────────────────────────────────────────────────────────────── */
+async function openTask(taskId) {
+  if (taskId === activeTaskId) return;
+
+  // Cancel any existing stream
+  cancelStream();
+
+  activeTaskId = taskId;
+  lastSeq      = -1;
+  tokenCount   = 0;
+  autoScroll   = true;
+
+  // Update sidebar selection
+  renderTaskList();
+
+  // Show detail panel
+  document.getElementById('detail-empty').style.display   = 'none';
+  const dc = document.getElementById('detail-content');
+  dc.style.display = 'flex';
+  dc.style.flexDirection = 'column';
+
+  // Clear output
+  const out = document.getElementById('output-wrap');
+  out.textContent = '';
+
+  // Fetch task metadata
+  let task;
+  try {
+    const r = await fetch(`/api/task/${taskId}`);
+    task = await r.json();
+  } catch {
+    return;
+  }
+
+  updateDetailHeader(task);
+  rerunModel  = task.model;
+  rerunPrompt = task.prompt;
+
+  // Set up scroll detection (stop auto-scroll if user scrolls up)
+  out.onscroll = () => {
+    autoScroll = out.scrollHeight - out.scrollTop - out.clientHeight < 40;
+  };
+
+  // Stream from seq 0 — all stored tokens arrive in one burst for
+  // completed tasks, then closes; for running tasks it follows live.
+  startStream(taskId, 0);
+}
+
+function updateDetailHeader(task) {
+  document.getElementById('detail-model').textContent = task.model;
+  document.getElementById('detail-prompt').innerHTML  =
+    `<strong>Prompt:</strong> ${esc(task.prompt)}`;
+
+  const badge = document.getElementById('detail-status-badge');
+  badge.className = `status-badge ${task.status}`;
+  badge.textContent = task.status;
+
+  document.getElementById('btn-rerun').style.display =
+    task.status === 'interrupted' || task.status === 'error' ? '' : 'none';
+  document.getElementById('btn-copy').style.display  = '';
+}
+
+function startStream(taskId, fromSeq) {
+  const ctrl = new AbortController();
+  activeStream = ctrl;
+  document.getElementById('stream-status-bar').textContent = 'Streaming…';
+
+  (async () => {
+    try {
+      const resp = await fetch(
+        `/api/task/${taskId}/stream?from_seq=${fromSeq}`,
+        { signal: ctrl.signal }
+      );
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();  // keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let msg;
+          try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (msg.done) {
+            removeCursor();
+            ttsFlush();   // speak any remaining buffered text
+            const statusEl = document.getElementById('stream-status-bar');
+            if (msg.status === 'complete') {
+              statusEl.textContent = 'Complete';
+              statusEl.className   = '';
+            } else if (msg.status === 'interrupted') {
+              statusEl.textContent = 'Interrupted (server restarted mid-generation)';
+              statusEl.className   = 'output-status interrupted';
+            } else {
+              statusEl.textContent = `Ended with status: ${msg.status}`;
+              statusEl.className   = 'output-status err';
+            }
+            // Refresh task list to update status dot
+            await loadTasks();
+            return;
+          }
+
+          appendToken(msg.token);
+          ttsConsume(msg.token);
+          lastSeq = msg.seq;
+        }
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        document.getElementById('stream-status-bar').textContent = 'Stream disconnected';
+      }
+    }
+  })();
+}
+
+function appendToken(token) {
+  const out = document.getElementById('output-wrap');
+
+  // Remove cursor before appending (add it back after)
+  const cursor = out.querySelector('.output-cursor');
+  if (cursor) cursor.remove();
+
+  out.appendChild(document.createTextNode(token));
+
+  // Add blinking cursor
+  const c = document.createElement('span');
+  c.className = 'output-cursor';
+  out.appendChild(c);
+
+  tokenCount++;
+  document.getElementById('token-count-bar').textContent =
+    `${tokenCount} token${tokenCount !== 1 ? 's' : ''}`;
+
+  if (autoScroll) out.scrollTop = out.scrollHeight;
+}
+
+function removeCursor() {
+  const out    = document.getElementById('output-wrap');
+  const cursor = out.querySelector('.output-cursor');
+  if (cursor) cursor.remove();
+}
+
+function cancelStream() {
+  if (activeStream) {
+    activeStream.abort();
+    activeStream = null;
+  }
+  ttsStop();
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Actions
+─────────────────────────────────────────────────────────────── */
+async function deleteActiveTask() {
+  if (!activeTaskId) return;
+  if (!confirm('Delete this task and all its output?')) return;
+  try {
+    await fetch(`/api/task/${activeTaskId}`, { method: 'DELETE' });
+  } catch {}
+  cancelStream();
+  activeTaskId = null;
+  document.getElementById('detail-empty').style.display   = '';
+  document.getElementById('detail-content').style.display = 'none';
+  await loadTasks();
+}
+
+function copyOutput() {
+  const text = document.getElementById('output-wrap').textContent;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+  const btn = document.getElementById('btn-copy');
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); } catch {}
+  document.body.removeChild(ta);
+}
+
+async function rerunTask() {
+  if (!rerunModel || !rerunPrompt) return;
+  document.getElementById('model-select').value = rerunModel;
+  document.getElementById('prompt-input').value  = rerunPrompt;
+  await submitTask();
+}
+
+/* ───────────────────────────────────────────────────────────────
+   New Task modal
+─────────────────────────────────────────────────────────────── */
+async function loadModels() {
+  try {
+    const r = await fetch('/api/models');
+    const d = await r.json();
+    const sel = document.getElementById('model-select');
+    const models = d.models || [];
+    if (!models.length) {
+      sel.innerHTML = '<option value="">No models installed</option>';
+      return;
+    }
+    sel.innerHTML = models.map(m =>
+      `<option value="${esc(m.name)}">${esc(m.name)}</option>`
+    ).join('');
+  } catch {
+    document.getElementById('model-select').innerHTML =
+      '<option value="">Could not reach Ollama</option>';
+  }
+}
+
+function openModal() {
+  loadModels();
+  document.getElementById('prompt-input').value = '';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('prompt-input').focus(), 80);
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  stopMic();
+}
+
+async function submitTask() {
+  const model  = document.getElementById('model-select').value.trim();
+  const prompt = document.getElementById('prompt-input').value.trim();
+  if (!model)  { alert('Select a model first.'); return; }
+  if (!prompt) { alert('Enter a prompt.'); return; }
+
+  closeModal();
+
+  try {
+    const r = await fetch('/api/task', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ model, prompt }),
+    });
+    const task = await r.json();
+    await loadTasks();
+    openTask(task.task_id);
+  } catch (e) {
+    alert(`Failed to create task: ${e.message}`);
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Utilities
+─────────────────────────────────────────────────────────────── */
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatAge(ts) {
+  const diff = Math.floor(Date.now() / 1000 - ts);
+  if (diff < 60)   return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   STT — Speech-to-Text (browser SpeechRecognition)
+─────────────────────────────────────────────────────────────── */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognizer   = null;
+let isListening  = false;
+
+function initSTT() {
+  // Show mic button only if the browser supports SpeechRecognition
+  if (!SR) return;
+  const micBtn = document.getElementById('prompt-mic-btn');
+  const hint   = document.getElementById('voice-hint');
+  micBtn.classList.remove('hidden');
+  hint.style.display = '';
+}
+
+function toggleMic() {
+  if (!SR) return;
+  if (isListening) { recognizer.stop(); return; }
+
+  recognizer = new SR();
+  recognizer.continuous     = false;
+  recognizer.interimResults = true;
+  recognizer.lang           = navigator.language || 'en-US';
+
+  const micBtn = document.getElementById('prompt-mic-btn');
+  const input  = document.getElementById('prompt-input');
+
+  recognizer.onstart = () => {
+    isListening = true;
+    micBtn.classList.add('active');
+    micBtn.title = 'Listening… click to stop';
+  };
+
+  recognizer.onresult = (e) => {
+    const transcript = Array.from(e.results)
+      .map(r => r[0].transcript).join('');
+    input.value = transcript;
+  };
+
+  recognizer.onend = () => {
+    isListening = false;
+    micBtn.classList.remove('active');
+    micBtn.title = 'Speak prompt';
+  };
+
+  recognizer.onerror = (e) => {
+    isListening = false;
+    micBtn.classList.remove('active');
+    if (e.error !== 'aborted') console.warn('STT error:', e.error);
+  };
+
+  recognizer.start();
+}
+
+function stopMic() {
+  if (recognizer && isListening) recognizer.stop();
+}
+
+/* ───────────────────────────────────────────────────────────────
+   TTS — Text-to-Speech (browser speechSynthesis, sentence-buffered)
+─────────────────────────────────────────────────────────────── */
+let ttsEnabled = false;
+let ttsBuf     = '';   // accumulates tokens until a sentence boundary
+
+function toggleTTS() {
+  ttsEnabled = !ttsEnabled;
+  const btn = document.getElementById('btn-tts');
+  btn.classList.toggle('active', ttsEnabled);
+  btn.title = ttsEnabled ? 'Voice output: on (click to mute)' : 'Voice output: off';
+  if (!ttsEnabled) {
+    speechSynthesis.cancel();
+    ttsBuf = '';
+  }
+}
+
+// Called with each incoming token during streaming
+function ttsConsume(token) {
+  if (!ttsEnabled) return;
+  ttsBuf += token;
+  // Speak whenever we hit a sentence-ending punctuation followed by whitespace
+  // (or end of buffer on flush).
+  const m = ttsBuf.match(/^([\s\S]*?[.!?\n])\s+/);
+  if (m) {
+    speakNow(m[1].trim());
+    ttsBuf = ttsBuf.slice(m[0].length);
+  }
+}
+
+// Flush any remaining buffered text (called when stream ends)
+function ttsFlush() {
+  if (!ttsEnabled) { ttsBuf = ''; return; }
+  const text = ttsBuf.trim();
+  ttsBuf = '';
+  if (text) speakNow(text);
+}
+
+function speakNow(text) {
+  if (!text || !ttsEnabled) return;
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = 1.05;
+  speechSynthesis.speak(utt);
+}
+
+function ttsStop() {
+  speechSynthesis.cancel();
+  ttsBuf = '';
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Keyboard
+─────────────────────────────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); stopMic(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+    e.preventDefault();
+    openModal();
+  }
+});
+
+init();
+</script>
+</body>
+</html>
