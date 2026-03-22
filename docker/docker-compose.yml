@@ -468,6 +468,61 @@ services:
       - olama_net
 
 # =============================================================================
+#  CATEGORY: INTERFACE — GHOST RUNNER
+#  Purpose : Background task generation with resume support.
+#            Submit a prompt; the server streams Ollama's response and saves
+#            every token to SQLite. Close your browser — the generation
+#            continues. Reconnect and stream from any sequence position to
+#            replay the full output.
+#  Port    : 45215 → http://localhost:45215
+#  Data    : ${DATA_DIR}/ghost — SQLite DB (tasks + tokens)
+# =============================================================================
+
+  ghost-runner:
+    build:
+      context: ./ghost-runner
+      dockerfile: Dockerfile
+    image: olama-ghost-runner:latest
+    container_name: olama-ghost-runner
+    restart: unless-stopped
+    depends_on:
+      olama:
+        condition: service_healthy
+
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "Ghost Runner — background AI task generation with resume"
+      com.olama.data: "${DATA_DIR:-/opt/olama}/ghost"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/ghost-runner.log"
+
+    ports:
+      - "${GHOST_RUNNER_PORT:-45215}:8080"
+
+    environment:
+      - OLLAMA_BASE_URL=http://olama:11434
+      - DB_PATH=/data/ghost.db
+
+    volumes:
+      - ${DATA_DIR:-/opt/olama}/ghost:/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "ghost-runner"
+
+    networks:
+      - olama_net
+
+# =============================================================================
 #  CATEGORY: INTERFACE — PORTAL
 #  Purpose : Single unified entry point for all web interfaces.
 #            One address, one page — Chat / Models / Logs are accessible via
@@ -491,6 +546,7 @@ services:
     depends_on:
       - open-webui
       - model-manager
+      - ghost-runner
       - dozzle
 
     labels:
@@ -508,6 +564,7 @@ services:
       # hardcoded, so boris.local, a LAN IP, and localhost all work the same way.
       - WEBUI_PORT=${WEBUI_PORT:-45213}
       - MODEL_MANAGER_PORT=${MODEL_MANAGER_PORT:-45214}
+      - GHOST_RUNNER_PORT=${GHOST_RUNNER_PORT:-45215}
       - DOZZLE_PORT=${DOZZLE_PORT:-9999}
 
     healthcheck:
