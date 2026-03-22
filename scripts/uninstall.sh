@@ -231,13 +231,21 @@ else
 fi
 
 # ── Remove any remaining Docker volumes ───────────────────────────────────────
-if [[ ${#_olama_vols[@]} -gt 0 ]]; then
+# Re-query after compose down — compose may have created volumes under a
+# project-prefixed name (e.g. docker_olama_sockets) that weren't in the
+# pre-run snapshot.
+_remaining_vols=()
+while IFS= read -r _vol; do
+  [[ -n "$_vol" ]] && _remaining_vols+=("$_vol")
+done < <(docker volume ls -q 2>/dev/null | grep -E "(^|_)olama" || true)
+
+if [[ ${#_remaining_vols[@]} -gt 0 ]]; then
   sep
   info "Removing Docker volumes..."
-  for _vol in "${_olama_vols[@]}"; do
-    docker volume rm "$_vol" 2>/dev/null \
+  for _vol in "${_remaining_vols[@]}"; do
+    docker volume rm -f "$_vol" 2>/dev/null \
       && success "  Removed volume: ${_vol}" \
-      || warn "  Could not remove volume ${_vol} — may still be in use."
+      || warn "  Could not remove volume ${_vol} — skipping."
   done
 fi
 
@@ -374,7 +382,12 @@ fi
 # ── Remove install directory ───────────────────────────────────────────────────
 sep
 if [[ -d "$INSTALL_DIR" ]]; then
-  if [[ "$DATA_DIR" == "${INSTALL_DIR}"* || "$INSTALL_DIR" == "${DATA_DIR}"* ]]; then
+  # Use path-aware overlap check (require / boundary — /opt/olama-stack must not match /opt/olama)
+  _inst_real="$(realpath -m "$INSTALL_DIR")"
+  _data_real="$(realpath -m "$DATA_DIR")"
+  if [[ "$_inst_real" == "$_data_real" || \
+        "$_inst_real" == "$_data_real/"* || \
+        "$_data_real" == "$_inst_real/"* ]]; then
     warn "Install dir ${INSTALL_DIR} overlaps with data dir ${DATA_DIR} — skipping removal."
   else
     info "Removing stack files at ${INSTALL_DIR}..."
