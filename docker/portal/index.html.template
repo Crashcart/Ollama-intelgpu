@@ -274,9 +274,10 @@
       background: var(--dim);
       transition: background .3s;
     }
-    .svc-dot.ok   { background: var(--green); box-shadow: 0 0 5px rgba(74,222,128,.5); }
-    .svc-dot.err  { background: var(--red);   box-shadow: 0 0 5px rgba(248,113,113,.5); }
-    .svc-dot.warn { background: var(--yellow);}
+    .svc-dot.ok      { background: var(--green);  box-shadow: 0 0 5px rgba(74,222,128,.5); }
+    .svc-dot.err     { background: var(--red);    box-shadow: 0 0 5px rgba(248,113,113,.5); }
+    .svc-dot.warn,
+    .svc-dot.unknown { background: var(--yellow); }
     .svc-dot.checking { background: var(--dim); animation: pulse .9s ease-in-out infinite; }
     @keyframes pulse { 50% { opacity: .3; } }
 
@@ -314,8 +315,9 @@
       font-size: .82rem;
       text-align: center;
     }
-    .issues-summary.ok  { background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.2); color: var(--green); }
-    .issues-summary.err { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: var(--red); }
+    .issues-summary.ok      { background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.2); color: var(--green); }
+    .issues-summary.err     { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: var(--red); }
+    .issues-summary.warn    { background: rgba(250,204,21,.08);  border: 1px solid rgba(250,204,21,.2);  color: var(--yellow); }
     .issues-summary.checking { background: var(--surface); border: 1px solid var(--border); color: var(--dim); }
 
     .issues-actions {
@@ -544,6 +546,51 @@
 
     <div class="nav-sep"></div>
 
+    <!-- Memory -->
+    <div class="nav-item">
+      <button class="nav-btn" id="btn-memory" onclick="showFrame('memory')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a10 10 0 1 0 10 10"/>
+          <path d="M12 6v6l4 2"/>
+          <circle cx="18" cy="6" r="3" fill="currentColor" stroke="none" opacity=".4"/>
+          <path d="M18 3v3h3" stroke-width="1.5"/>
+        </svg>
+        Memory
+      </button>
+      <a class="nav-ext" id="ext-memory" href="#" target="_blank" title="Open Memory Browser in new tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+    </div>
+
+    <!-- Files -->
+    <div class="nav-item">
+      <button class="nav-btn" id="btn-files" onclick="showFrame('files')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/>
+          <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/>
+          <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+        </svg>
+        Files
+      </button>
+      <a class="nav-ext" id="ext-files" href="#" target="_blank" title="Open File Catalog in new tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+    </div>
+
+    <div class="nav-sep"></div>
+
     <!-- Logs -->
     <div class="nav-item">
       <button class="nav-btn" id="btn-logs" onclick="showFrame('logs')">
@@ -593,6 +640,8 @@
   <iframe id="frame-chat"   title="Open WebUI"></iframe>
   <iframe id="frame-models" title="Model Manager"></iframe>
   <iframe id="frame-tasks"  title="Ghost Runner" allow="microphone"></iframe>
+  <iframe id="frame-memory" title="Memory Browser"></iframe>
+  <iframe id="frame-files"  title="File Catalog"></iframe>
   <iframe id="frame-logs"   title="Dozzle Logs"></iframe>
 
   <!-- Crit Issues: inline panel, no iframe needed -->
@@ -651,10 +700,13 @@
 <script>
 /* ── Ports injected by envsubst at container start ─────────── */
 const PORTS = {
-  chat:   ${WEBUI_PORT},
-  models: ${MODEL_MANAGER_PORT},
-  tasks:  ${GHOST_RUNNER_PORT},
-  logs:   ${DOZZLE_PORT},
+  chat:    ${WEBUI_PORT},
+  models:  ${MODEL_MANAGER_PORT},
+  tasks:   ${GHOST_RUNNER_PORT},
+  memory:  ${MEMORY_PORT},
+  files:   ${FILE_CATALOG_PORT},
+  logs:    ${DOZZLE_PORT},
+  ollama:  ${OLLAMA_PORT},   // used only for direct fallback ping; no iframe
 };
 
 /* ── Resolve base URL from the browser's own location ──────── */
@@ -667,7 +719,7 @@ function svcUrl(key) {
 
 /* ── State ──────────────────────────────────────────────────── */
 let current = 'chat';
-const everLoaded = { chat: false, models: false, tasks: false, logs: false };
+const everLoaded = { chat: false, models: false, tasks: false, memory: false, files: false, logs: false };
 
 /* ── Init ───────────────────────────────────────────────────── */
 function init() {
@@ -764,12 +816,17 @@ function setStatus(state, text) {
 // one /api/health call to model-manager — no CORS issues, full diagnostics.
 // UI services (Open WebUI, Model Manager, Dozzle) use no-cors browser fetches.
 const SERVICES = [
-  { id: 'ollama',    name: 'Ollama Engine', mode: 'server', healthKey: 'ollama' },
-  { id: 'searxng',   name: 'Web Search',    mode: 'server', healthKey: 'searxng' },
-  { id: 'pipelines', name: 'Pipelines',     mode: 'server', healthKey: 'pipelines' },
+  // mode:'server' = checked via model-manager /api/health proxy.
+  // directPort: browser falls back to a direct no-cors ping if the proxy is down.
+  // noDirectFallback: no host port exposed; show "Unknown" if proxy is down.
+  { id: 'ollama',    name: 'Ollama Engine', mode: 'server', healthKey: 'ollama',     directPort: PORTS.ollama },
+  { id: 'searxng',   name: 'Web Search',    mode: 'server', healthKey: 'searxng',    noDirectFallback: true },
+  { id: 'pipelines', name: 'Pipelines',     mode: 'server', healthKey: 'pipelines',  noDirectFallback: true },
   { id: 'webui',     name: 'Open WebUI',    mode: 'nocors', port: PORTS.chat },
   { id: 'manager',   name: 'Model Manager', mode: 'nocors', port: PORTS.models },
   { id: 'tasks',     name: 'Ghost Runner',  mode: 'nocors', port: PORTS.tasks },
+  { id: 'memory',    name: 'Memory',        mode: 'nocors', port: PORTS.memory },
+  { id: 'files',     name: 'File Catalog',  mode: 'nocors', port: PORTS.files },
   { id: 'dozzle',    name: 'Log Viewer',    mode: 'nocors', port: PORTS.logs },
 ];
 
@@ -880,11 +937,12 @@ async function runHealthCheck() {
   document.getElementById('issues-summary').className = 'issues-summary checking';
   document.getElementById('issues-summary').textContent = 'Checking\u2026';
 
-  // Fire server-side health + all no-cors checks concurrently
+  // Fire server-side health + all no-cors checks concurrently.
+  // Proxy timeout reduced to 4 s so fallback kicks in quickly.
   const healthUrl = `${svcUrl('models')}/api/health`;
   const t0 = Date.now();
 
-  const serverPromise = fetch(healthUrl, { signal: AbortSignal.timeout(12000) })
+  const serverPromise = fetch(healthUrl, { signal: AbortSignal.timeout(4000) })
     .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
     .catch(e => ({ _err: `${e.name}: ${e.message}`, _latency: Date.now() - t0 }));
 
@@ -896,17 +954,31 @@ async function runHealthCheck() {
 
   // Build resultMap
   const resultMap = {};
+  const proxyDown = !!serverData._err;
 
   for (const svc of SERVICES.filter(s => s.mode === 'server')) {
-    if (serverData._err) {
+    if (!proxyDown) {
+      resultMap[svc.id] = parseServerEntry(serverData[svc.healthKey]);
+    } else if (svc.noDirectFallback) {
+      // Internal-only service — no host port to ping; report as unknown, not error
       resultMap[svc.id] = {
-        state: 'err',
-        detail: 'Health proxy unreachable',
-        diagnostic: `Health proxy: ${healthUrl}\nProxy error:  ${serverData._err}\nNote: ${svc.name} status unknown \u2014 health API is down`,
+        state: 'unknown',
+        detail: 'Status unknown (proxy down)',
+        diagnostic: `Health proxy: ${healthUrl}\nProxy error:  ${serverData._err}\n${svc.name} has no direct host port — cannot check from browser.`,
         latency_ms: serverData._latency,
       };
     } else {
-      resultMap[svc.id] = parseServerEntry(serverData[svc.healthKey]);
+      // Has a direct host port — try a no-cors fallback ping
+      addLog(`Proxy down — direct-pinging ${svc.name}\u2026`, 'dim');
+      const direct = await checkNoCors({ port: svc.directPort });
+      resultMap[svc.id] = {
+        ...direct,
+        detail: direct.state === 'ok'
+          ? `${direct.detail} (direct, proxy down)`
+          : `${direct.detail} (proxy also down)`,
+        diagnostic: (direct.diagnostic || '') +
+          `\nProxy was unreachable: ${serverData._err}`,
+      };
     }
   }
   noCorsServices.forEach((svc, i) => { resultMap[svc.id] = noCorsResults[i]; });
@@ -914,7 +986,7 @@ async function runHealthCheck() {
   SERVICES.forEach(svc => { lastCheckResults[svc.id] = resultMap[svc.id]; });
 
   // Log each service result
-  if (serverData._err) {
+  if (proxyDown) {
     addLog(`Health proxy unreachable \u00b7 ${serverData._err}`, 'err');
   }
   for (const svc of SERVICES) {
@@ -924,6 +996,8 @@ async function runHealthCheck() {
     const urlPart = r.url ? ` \u00b7 ${r.url}` : '';
     if (r.state === 'ok') {
       addLog(`${svc.name}: ${r.detail}${urlPart}`, 'ok');
+    } else if (r.state === 'unknown') {
+      addLog(`${svc.name}: ${r.detail}`, 'dim');
     } else {
       addLog(`${svc.name}: ${r.detail}${lat}${urlPart}`, 'err');
     }
@@ -931,23 +1005,29 @@ async function runHealthCheck() {
 
   renderRows(SERVICES.map(svc => ({ ...svc, ...(resultMap[svc.id] || {}) })));
 
-  const anyErr = SERVICES.some(svc => resultMap[svc.id]?.state === 'err');
+  // 'unknown' (proxy down, no direct port) is a warning — not a hard error
+  const anyErr  = SERVICES.some(svc => resultMap[svc.id]?.state === 'err');
+  const anyWarn = SERVICES.some(svc => resultMap[svc.id]?.state === 'unknown');
   const sum = document.getElementById('issues-summary');
   if (anyErr) {
     const n = SERVICES.filter(s => resultMap[s.id]?.state === 'err').length;
     sum.className = 'issues-summary err';
     sum.textContent = 'One or more services are not responding.';
     addLog(`${n} service${n > 1 ? 's' : ''} in error`, 'warn');
+  } else if (anyWarn) {
+    sum.className = 'issues-summary warn';
+    sum.textContent = 'Health proxy down — some statuses unknown.';
+    addLog('Health proxy down \u2014 some statuses unknown', 'warn');
   } else {
     sum.className = 'issues-summary ok';
     sum.textContent = 'All systems nominal.';
     addLog('All systems nominal', 'dim');
   }
 
-  // Show/hide the Issues button based on whether errors exist
+  // Show/hide the Issues button — trigger on errors or warnings
   const issNav = document.getElementById('issues-nav-wrap');
   const issBtn = document.getElementById('btn-issues');
-  if (anyErr) {
+  if (anyErr || anyWarn) {
     issNav.classList.add('visible');
     issBtn.classList.add('issues-err');
   } else {
@@ -966,7 +1046,7 @@ function renderRows(rows) {
   const list = document.getElementById('svc-list');
   list.innerHTML = rows.map(s => {
     const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const sub = s.state === 'err' && s.diagnostic
+    const sub = (s.state === 'err' || s.state === 'unknown') && s.diagnostic
       ? `<span class="svc-detail-sub">${esc(s.diagnostic).replace(/\n/g, '<br>')}</span>`
       : '';
     const urlLine = s.url && s.state !== 'checking'

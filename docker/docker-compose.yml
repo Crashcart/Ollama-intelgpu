@@ -526,6 +526,108 @@ services:
       - olama_net
 
 # =============================================================================
+#  CATEGORY: INTERFACE — MEMORY BROWSER
+#  Purpose : Persistent AI memory store.  Facts ("memories") the AI has
+#            learned are saved here.  Pinned memories can be fetched by
+#            other services via GET /api/memories/pinned and injected into
+#            every new conversation's system prompt.
+#  Port    : 45216 → http://localhost:45216
+#  Data    : ${DATA_DIR}/memory — SQLite DB (memories table)
+# =============================================================================
+
+  memory-browser:
+    build:
+      context: ./memory-browser
+      dockerfile: Dockerfile
+    image: olama-memory-browser:latest
+    container_name: olama-memory-browser
+    restart: unless-stopped
+
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "AI memory store — persistent facts with pin and CRUD UI"
+      com.olama.data: "${DATA_DIR:-/opt/olama}/memory"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/memory-browser.log"
+
+    ports:
+      - "${MEMORY_PORT:-45216}:8080"
+
+    environment:
+      - DB_PATH=/data/memory.db
+
+    volumes:
+      - ${DATA_DIR:-/opt/olama}/memory:/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "memory-browser"
+
+    networks:
+      - olama_net
+
+# =============================================================================
+#  CATEGORY: INTERFACE — FILE CATALOG
+#  Purpose : Large-file browser for DATA_DIR.  Lists model weights, DBs, and
+#            other large files; lets you move them to a mounted external drive
+#            and automatically creates symlinks back so all paths keep working.
+#  Port    : 45217 → http://localhost:45217
+#  Mounts  : DATA_DIR → /data (read-write for move/restore)
+#             DRIVES_DIR (default /mnt) → /drives (external drive mount points)
+# =============================================================================
+
+  file-catalog:
+    build:
+      context: ./file-catalog
+      dockerfile: Dockerfile
+    image: olama-file-catalog:latest
+    container_name: olama-file-catalog
+    restart: unless-stopped
+
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "Large-file catalog — browse, move to external drive, symlink back"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/file-catalog.log"
+
+    ports:
+      - "${FILE_CATALOG_PORT:-45217}:8080"
+
+    environment:
+      - DATA_DIR=/data
+      - DRIVES_DIR=/drives
+      - MIN_SIZE_MB=${FILE_CATALOG_MIN_MB:-100}
+
+    volumes:
+      - ${DATA_DIR:-/opt/olama}:/data
+      - ${DRIVES_DIR:-/mnt}:/drives
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "file-catalog"
+
+    networks:
+      - olama_net
+
+# =============================================================================
 #  CATEGORY: INTERFACE — GHOST RUNNER
 #  Purpose : Background task generation with resume support.
 #            Submit a prompt; the server streams Ollama's response and saves
@@ -609,6 +711,7 @@ services:
       - open-webui
       - model-manager
       - ghost-runner
+      - memory-browser
       - dozzle
 
     labels:
@@ -627,7 +730,10 @@ services:
       - WEBUI_PORT=${WEBUI_PORT:-45213}
       - MODEL_MANAGER_PORT=${MODEL_MANAGER_PORT:-45214}
       - GHOST_RUNNER_PORT=${GHOST_RUNNER_PORT:-45215}
+      - MEMORY_PORT=${MEMORY_PORT:-45216}
+      - FILE_CATALOG_PORT=${FILE_CATALOG_PORT:-45217}
       - DOZZLE_PORT=${DOZZLE_PORT:-9999}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
 
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
