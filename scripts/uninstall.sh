@@ -2,11 +2,11 @@
 # =============================================================================
 # uninstall.sh — Remove the Olama Intel GPU stack
 #
-# Usage (from a local clone):
-#   bash scripts/uninstall.sh [OPTIONS]
+# One-liner (mirrors install.sh — no local clone required):
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/uninstall.sh)
 #
-# Usage (one-liner curl pipe — repo must be public):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/uninstall.sh) [OPTIONS]
+# From a local clone:
+#   bash scripts/uninstall.sh [OPTIONS]
 #
 # Options:
 #   --data-dir    DIR   Where data was stored (default: /opt/olama)
@@ -33,6 +33,7 @@ WEBUI_PORT="${WEBUI_PORT:-45213}"
 MODEL_MANAGER_PORT="${MODEL_MANAGER_PORT:-45214}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
 DOZZLE_PORT="${DOZZLE_PORT:-9999}"
+ALLOW_FROM="${ALLOW_FROM:-any}"
 PURGE_DATA=false
 KEEP_IMAGES=false
 YES=false
@@ -66,7 +67,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Read actual ports and dirs from .env ──────────────────────────────────────
+# ── Read installed config from .env ───────────────────────────────────────────
 _ENV_FILE=""
 for _try in \
   "${INSTALL_DIR}/docker/.env" \
@@ -86,7 +87,8 @@ if [[ -n "$_ENV_FILE" ]]; then
   _v=$(_env_read MODEL_MANAGER_PORT); [[ -n "$_v" ]] && MODEL_MANAGER_PORT="$_v"
   _v=$(_env_read OLLAMA_PORT);        [[ -n "$_v" ]] && OLLAMA_PORT="$_v"
   _v=$(_env_read DOZZLE_PORT);        [[ -n "$_v" ]] && DOZZLE_PORT="$_v"
-  _v=$(_env_read OLLAMA_VERSION);     OLLAMA_VERSION="${_v:-latest}"
+  _v=$(_env_read ALLOW_FROM);         [[ -n "$_v" ]] && ALLOW_FROM="$_v"
+  OLLAMA_VERSION=$(_env_read OLLAMA_VERSION || echo "latest")
 else
   OLLAMA_VERSION="latest"
 fi
@@ -109,21 +111,18 @@ for _try in \
   fi
 done
 
-# ── Gather what will actually be removed (for the summary) ───────────────────
-# Collect all olama-related images across every tag (not just :latest)
+# ── Inventory what will be removed ────────────────────────────────────────────
 _olama_imgs=()
 while IFS= read -r _img; do
   [[ -n "$_img" ]] && _olama_imgs+=("$_img")
 done < <(docker images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null \
   | grep -E "^(olama|olama-model-manager|olama-portal):" || true)
 
-# Collect Docker volumes with "olama" in the name
 _olama_vols=()
 while IFS= read -r _vol; do
   [[ -n "$_vol" ]] && _olama_vols+=("$_vol")
 done < <(docker volume ls -q --filter "name=olama" 2>/dev/null || true)
 
-# Collect Docker networks with "olama" in the name (plus docker_default from compose)
 _olama_nets=()
 while IFS= read -r _net; do
   [[ -n "$_net" ]] && _olama_nets+=("$_net")
@@ -150,17 +149,12 @@ if ! $KEEP_IMAGES; then
   fi
 fi
 
-if [[ ${#_olama_vols[@]} -gt 0 ]]; then
-  echo "    • Remove Docker volumes:"
-  for _v in "${_olama_vols[@]}"; do echo "        - ${_v}"; done
-fi
+[[ ${#_olama_vols[@]} -gt 0 ]] && \
+  echo "    • Remove Docker volumes: ${_olama_vols[*]}"
+[[ ${#_olama_nets[@]} -gt 0 ]] && \
+  echo "    • Remove Docker networks: ${_olama_nets[*]}"
 
-if [[ ${#_olama_nets[@]} -gt 0 ]]; then
-  echo "    • Remove Docker networks:"
-  for _n in "${_olama_nets[@]}"; do echo "        - ${_n}"; done
-fi
-
-echo "    • Remove firewall rules added by the installer (if any)"
+echo "    • Remove firewall rules added by the installer"
 [[ -d "$INSTALL_DIR" ]] && echo "    • Delete stack files at ${INSTALL_DIR}"
 echo
 if $PURGE_DATA; then
@@ -172,8 +166,6 @@ else
   echo -e "  ${YELLOW}Data at ${DATA_DIR} will be KEPT.${NC}"
   echo    "  (use --purge to also delete models, history, and config)"
 fi
-echo
-echo "  Public registry images will be left in place (open-webui, searxng, pipelines, dozzle)."
 echo
 
 # ── Confirmation prompt ────────────────────────────────────────────────────────
@@ -204,13 +196,10 @@ info "Stopping and removing Olama containers..."
 if [[ -n "$COMPOSE_CMD" && -n "$COMPOSE_FILE" ]]; then
   info "Using compose file: ${COMPOSE_FILE}"
   cd "$(dirname "$COMPOSE_FILE")"
-  # --volumes: removes any anonymous/named volumes declared in the compose file
-  # --remove-orphans: cleans up containers not in the current compose definition
   $COMPOSE_CMD down --volumes --remove-orphans 2>/dev/null \
     && success "Containers, volumes, and networks removed (docker compose down)." \
     || warn "docker compose down reported an error — containers may already be gone."
 else
-  # Fallback: stop by known container names
   warn "Compose file not found — stopping containers by name..."
   _any_removed=false
   for cname in olama olama-open-webui olama-model-manager olama-portal \
@@ -226,7 +215,7 @@ else
     && success "Containers removed." \
     || info "No running containers found — already clean."
 
-  # Remove networks in fallback path (compose down handles this in normal path)
+  # Remove networks in fallback path
   for _net in olama_default docker_default; do
     if docker network inspect "$_net" &>/dev/null 2>&1; then
       docker network rm "$_net" 2>/dev/null \
@@ -235,7 +224,7 @@ else
   done
 fi
 
-# ── Remove Docker volumes (any that compose down may have missed) ─────────────
+# ── Remove any remaining Docker volumes ───────────────────────────────────────
 if [[ ${#_olama_vols[@]} -gt 0 ]]; then
   sep
   info "Removing Docker volumes..."
@@ -251,7 +240,6 @@ if ! $KEEP_IMAGES; then
   sep
   info "Removing Docker images..."
 
-  # Re-query images now that containers are stopped (removes "in use" blocks)
   _imgs_to_remove=()
   while IFS= read -r _img; do
     [[ -n "$_img" ]] && _imgs_to_remove+=("$_img")
@@ -262,15 +250,12 @@ if ! $KEEP_IMAGES; then
   for img in "${_imgs_to_remove[@]}"; do
     docker rmi "$img" 2>/dev/null \
       && _imgs_removed+=("$img") \
-      || warn "  Could not remove ${img} — may still be referenced by another container."
+      || warn "  Could not remove ${img} — may still be referenced."
   done
 
-  # Also remove any dangling (untagged) layers left by our builds
   _dangling=$(docker images -q --filter "dangling=true" 2>/dev/null || true)
-  if [[ -n "$_dangling" ]]; then
-    echo "$_dangling" | xargs docker rmi 2>/dev/null || true
-    info "  Removed dangling build layers."
-  fi
+  [[ -n "$_dangling" ]] && echo "$_dangling" | xargs docker rmi 2>/dev/null || true \
+    && info "  Removed dangling build layers."
 
   if [[ ${#_imgs_removed[@]} -gt 0 ]]; then
     success "Images removed: ${_imgs_removed[*]}"
@@ -279,16 +264,13 @@ if ! $KEEP_IMAGES; then
   fi
 
   echo
-  info "Public registry images left in place (other stacks may use them):"
+  info "Public registry images left in place:"
   info "  ghcr.io/open-webui/open-webui:main  ghcr.io/open-webui/pipelines:main"
   info "  searxng/searxng:latest  amir20/dozzle:latest"
-  info "To remove them too:"
-  info "  docker rmi ghcr.io/open-webui/open-webui:main ghcr.io/open-webui/pipelines:main \\"
-  info "             searxng/searxng:latest amir20/dozzle:latest"
+  info "To remove them: docker rmi ghcr.io/open-webui/open-webui:main ghcr.io/open-webui/pipelines:main searxng/searxng:latest amir20/dozzle:latest"
 fi
 
 # ── Remove remaining olama networks ───────────────────────────────────────────
-# compose down removes the compose-managed network, but scan for any stragglers
 _remaining_nets=$(docker network ls --format "{{.Name}}" 2>/dev/null \
   | grep -E "^olama" || true)
 if [[ -n "$_remaining_nets" ]]; then
@@ -304,35 +286,76 @@ fi
 sep
 info "Removing firewall rules added by the installer..."
 _fw_ports=("${PORTAL_PORT}" "${WEBUI_PORT}" "${MODEL_MANAGER_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}")
-_fw_labels=("Portal (unified UI)" "Open WebUI (chat)" "Model Manager" "Ollama API" "Dozzle (logs)")
+_fw_labels=("Portal" "Open WebUI" "Model Manager" "Ollama API" "Dozzle (logs)")
 _fw_removed=()
+
+# Parse stored ALLOW_FROM back into a CIDR array
+_parse_cidrs() {
+  local raw="${1:-any}"
+  IFS=',' read -ra _arr <<< "$raw"
+  for c in "${_arr[@]}"; do
+    c="${c// /}"
+    [[ -z "$c" || "$c" == "any" || "$c" == "0.0.0.0/0" ]] && echo "any" || echo "$c"
+  done | sort -u
+}
+mapfile -t _ALLOW_FROM_CIDRS < <(_parse_cidrs "${ALLOW_FROM:-any}")
+[[ ${#_ALLOW_FROM_CIDRS[@]} -eq 0 ]] && _ALLOW_FROM_CIDRS=("any")
 
 if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
   info "ufw is active — removing olama rules..."
+
   for i in "${!_fw_ports[@]}"; do
     p="${_fw_ports[$i]}"
-    if ufw status | grep -qE "^${p}[/ ]"; then
-      ufw delete allow "${p}/tcp" >/dev/null 2>&1 \
-        && _fw_removed+=("${p}/tcp (${_fw_labels[$i]})")
-    else
-      info "  Port ${p} not in ufw — skipping."
-    fi
+    for cidr in "${_ALLOW_FROM_CIDRS[@]}"; do
+      if [[ "$cidr" == "any" ]]; then
+        # Remove the simple open rule
+        if ufw status | grep -qE "^${p}[/ ].*ALLOW"; then
+          ufw delete allow "${p}/tcp" >/dev/null 2>&1 \
+            && _fw_removed+=("${p}/tcp (${_fw_labels[$i]})")
+        else
+          info "  Port ${p} not in ufw — skipping."
+        fi
+      else
+        # Remove the source-restricted rule
+        if ufw status | grep -qE "${cidr}.*${p}|${p}.*${cidr}"; then
+          ufw delete allow from "$cidr" to any port "$p" proto tcp >/dev/null 2>&1 \
+            && _fw_removed+=("${p}/tcp from ${cidr} (${_fw_labels[$i]})")
+        else
+          info "  Rule for port ${p} from ${cidr} not in ufw — skipping."
+        fi
+      fi
+    done
   done
+
   [[ ${#_fw_removed[@]} -gt 0 ]] \
     && success "ufw: removed rules for: ${_fw_removed[*]}" \
     || info "ufw: no olama rules found — already clean."
 
 elif command -v firewall-cmd &>/dev/null && firewall-cmd --state 2>/dev/null | grep -q "running"; then
   info "firewalld is active — removing olama rules..."
+
   for i in "${!_fw_ports[@]}"; do
     p="${_fw_ports[$i]}"
-    if firewall-cmd --query-port="${p}/tcp" --permanent &>/dev/null; then
-      firewall-cmd --permanent --remove-port="${p}/tcp" >/dev/null 2>&1 \
-        && _fw_removed+=("${p}/tcp (${_fw_labels[$i]})")
-    else
-      info "  Port ${p} not in firewalld — skipping."
-    fi
+    for cidr in "${_ALLOW_FROM_CIDRS[@]}"; do
+      if [[ "$cidr" == "any" ]]; then
+        if firewall-cmd --query-port="${p}/tcp" --permanent &>/dev/null; then
+          firewall-cmd --permanent --remove-port="${p}/tcp" >/dev/null 2>&1 \
+            && _fw_removed+=("${p}/tcp (${_fw_labels[$i]})")
+        else
+          info "  Port ${p} not in firewalld — skipping."
+        fi
+      else
+        _rich="rule family=\"ipv4\" source address=\"${cidr}\" port port=\"${p}\" protocol=\"tcp\" accept"
+        if firewall-cmd --query-rich-rule="$_rich" --permanent &>/dev/null; then
+          firewall-cmd --permanent --remove-rich-rule="$_rich" >/dev/null 2>&1 \
+            && _fw_removed+=("${p}/tcp from ${cidr} (${_fw_labels[$i]})")
+        else
+          info "  Rich rule for port ${p} from ${cidr} not found — skipping."
+        fi
+      fi
+    done
   done
+
   [[ ${#_fw_removed[@]} -gt 0 ]] && firewall-cmd --reload >/dev/null
   [[ ${#_fw_removed[@]} -gt 0 ]] \
     && success "firewalld: removed rules for: ${_fw_removed[*]}" \
@@ -342,10 +365,9 @@ else
   info "No active ufw or firewalld detected — skipping firewall step."
 fi
 
-# ── Remove install directory (stack files, not data) ──────────────────────────
+# ── Remove install directory ───────────────────────────────────────────────────
 sep
 if [[ -d "$INSTALL_DIR" ]]; then
-  # Safety: never delete if install dir contains or overlaps the data dir
   if [[ "$DATA_DIR" == "${INSTALL_DIR}"* || "$INSTALL_DIR" == "${DATA_DIR}"* ]]; then
     warn "Install dir ${INSTALL_DIR} overlaps with data dir ${DATA_DIR} — skipping removal."
   else
@@ -387,7 +409,6 @@ if ! $PURGE_DATA && [[ -d "$DATA_DIR" ]]; then
   echo
 fi
 
-# Hint: free up build cache if the user wants to reclaim more disk space
 echo    "  To also free Docker build cache (saves several GB):"
 echo    "    docker builder prune --all"
 echo

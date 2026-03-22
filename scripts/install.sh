@@ -52,6 +52,8 @@ MODEL_MANAGER_PORT="${MODEL_MANAGER_PORT:-45214}"
 PORTAL_PORT="${PORTAL_PORT:-45200}"
 COMPOSE_PROJECT="olama"
 RECREATE_CONTAINERS=false
+# Comma-separated CIDRs that may reach the UI ports (blank = any source = 0.0.0.0/0)
+ALLOW_FROM="${ALLOW_FROM:-}"
 
 # ── Color helpers ──────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -70,15 +72,19 @@ while [[ $# -gt 0 ]]; do
     --version)    OLLAMA_VERSION="$2"; shift 2 ;;
     --branch)     REPO_BRANCH="$2";   shift 2 ;;
     --recreate)   RECREATE_CONTAINERS=true; shift ;;
+    --allow-from) ALLOW_FROM="$2"; shift 2 ;;
     --help|-h)
-      echo "Usage: $0 [--data-dir DIR] [--port PORT] [--webui-port PORT] [--version TAG] [--branch NAME] [--recreate]"
+      echo "Usage: $0 [--data-dir DIR] [--port PORT] [--webui-port PORT] [--version TAG] [--branch NAME] [--recreate] [--allow-from CIDR[,CIDR...]]"
       echo
-      echo "  --data-dir   DIR   Storage root for models, chat history, config (default: /opt/olama)"
-      echo "  --port       PORT  Host port for Ollama API   (default: 11434)"
-      echo "  --webui-port PORT  Host port for Open WebUI   (default: 45213)"
-      echo "  --version    TAG   Ollama image tag           (default: latest)"
-      echo "  --branch     NAME  Git branch for curl install (default: main)"
-      echo "  --recreate         Force-recreate all containers (default: preserve existing)"
+      echo "  --data-dir   DIR            Storage root for models, chat history, config (default: /opt/olama)"
+      echo "  --port       PORT           Host port for Ollama API   (default: 11434)"
+      echo "  --webui-port PORT           Host port for Open WebUI   (default: 45213)"
+      echo "  --version    TAG            Ollama image tag           (default: latest)"
+      echo "  --branch     NAME           Git branch for curl install (default: main)"
+      echo "  --recreate                  Force-recreate all containers (default: preserve existing)"
+      echo "  --allow-from CIDR[,CIDR...] Firewall: comma-separated source CIDRs allowed to reach UI ports"
+      echo "                              Examples: 192.168.1.0/24   or   10.0.0.0/8,172.16.0.0/12"
+      echo "                              Default: open to all sources (0.0.0.0/0)"
       exit 0 ;;
     *) warn "Unknown option: $1"; shift ;;
   esac
@@ -302,7 +308,8 @@ _stamp_env "$ENV_FILE" \
   PORTAL_PORT          "${PORTAL_PORT}" \
   OLLAMA_VERSION       "${OLLAMA_VERSION}" \
   VIDEO_GID            "${VIDEO_GID}" \
-  RENDER_GID           "${RENDER_GID}"
+  RENDER_GID           "${RENDER_GID}" \
+  ALLOW_FROM           "${ALLOW_FROM:-any}"
 success ".env ready at ${ENV_FILE}"
 info "Review and adjust ${ENV_FILE} at any time — then run: docker compose up -d"
 
@@ -425,48 +432,107 @@ fi
 # ── Open firewall ports for LAN access ───────────────────────────────────────
 # Docker binds to 0.0.0.0 (all interfaces) so remote machines can reach the
 # ports at the network level — but most Linux distros block them by default
-# with ufw or firewalld.  Open just the four host-facing ports so other
-# devices on the same network can connect.
+# with ufw or firewalld.  Open the host-facing ports for every CIDR in
+# ALLOW_FROM (default: any source) so clients on all subnets can connect.
 sep
 info "Checking host firewall for LAN access..."
 _fw_ports=("${PORTAL_PORT}" "${WEBUI_PORT}" "${MODEL_MANAGER_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}")
 _fw_labels=("Portal (unified UI)" "Open WebUI (chat)" "Model Manager" "Ollama API" "Dozzle (logs)")
 _fw_opened=()
 
+# Parse ALLOW_FROM into an array of CIDRs; empty / "any" / "0.0.0.0/0" → open to all
+_parse_cidrs() {
+  local raw="${1:-any}"
+  IFS=',' read -ra _arr <<< "$raw"
+  for c in "${_arr[@]}"; do
+    c="${c// /}"
+    [[ -z "$c" || "$c" == "any" || "$c" == "0.0.0.0/0" ]] && echo "any" || echo "$c"
+  done | sort -u
+}
+mapfile -t ALLOW_FROM_CIDRS < <(_parse_cidrs "${ALLOW_FROM:-}")
+
+if [[ ${#ALLOW_FROM_CIDRS[@]} -eq 0 ]]; then
+  ALLOW_FROM_CIDRS=("any")
+fi
+
+# Summarise what we are about to open
+if [[ "${ALLOW_FROM_CIDRS[*]}" == "any" ]]; then
+  info "Firewall: allowing from any source (pass --allow-from CIDR to restrict)."
+else
+  info "Firewall: restricting access to: ${ALLOW_FROM_CIDRS[*]}"
+fi
+
 if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
   info "ufw is active — opening ports..."
+
   for i in "${!_fw_ports[@]}"; do
     p="${_fw_ports[$i]}"
-    if ! ufw status | grep -qE "^${p}[/ ]"; then
-      ufw allow "${p}/tcp" comment "olama — ${_fw_labels[$i]}" > /dev/null
-      _fw_opened+=("${p}/tcp (${_fw_labels[$i]})")
-    else
-      info "  Port ${p} already allowed in ufw — skipping."
-    fi
+    lbl="${_fw_labels[$i]}"
+    for cidr in "${ALLOW_FROM_CIDRS[@]}"; do
+      if [[ "$cidr" == "any" ]]; then
+        # Simple allow — source-agnostic; idempotent check via status
+        if ! ufw status | grep -qE "^${p}[/ ].*ALLOW"; then
+          ufw allow "${p}/tcp" comment "olama — ${lbl}" > /dev/null \
+            && _fw_opened+=("${p}/tcp from any (${lbl})")
+        else
+          info "  Port ${p} already open in ufw — skipping."
+        fi
+      else
+        # Source-restricted rule
+        if ! ufw status | grep -qE "^${p}[/ ].*${cidr}.*ALLOW|ALLOW.*${cidr}.*${p}"; then
+          ufw allow from "$cidr" to any port "$p" proto tcp \
+            comment "olama — ${lbl}" > /dev/null \
+            && _fw_opened+=("${p}/tcp from ${cidr} (${lbl})")
+        else
+          info "  Port ${p} from ${cidr} already open in ufw — skipping."
+        fi
+      fi
+    done
   done
-  [[ ${#_fw_opened[@]} -gt 0 ]] && \
-    success "ufw: opened ${_fw_opened[*]}" || \
-    success "ufw: all required ports were already open."
+
+  [[ ${#_fw_opened[@]} -gt 0 ]] \
+    && success "ufw: opened — ${_fw_opened[*]}" \
+    || success "ufw: all required rules already present."
 
 elif command -v firewall-cmd &>/dev/null && firewall-cmd --state 2>/dev/null | grep -q "running"; then
   info "firewalld is active — opening ports..."
+
   for i in "${!_fw_ports[@]}"; do
     p="${_fw_ports[$i]}"
-    if ! firewall-cmd --query-port="${p}/tcp" --permanent &>/dev/null; then
-      firewall-cmd --permanent --add-port="${p}/tcp" > /dev/null
-      _fw_opened+=("${p}/tcp (${_fw_labels[$i]})")
-    else
-      info "  Port ${p} already allowed in firewalld — skipping."
-    fi
+    lbl="${_fw_labels[$i]}"
+    for cidr in "${ALLOW_FROM_CIDRS[@]}"; do
+      if [[ "$cidr" == "any" ]]; then
+        if ! firewall-cmd --query-port="${p}/tcp" --permanent &>/dev/null; then
+          firewall-cmd --permanent --add-port="${p}/tcp" > /dev/null \
+            && _fw_opened+=("${p}/tcp from any (${lbl})")
+        else
+          info "  Port ${p} already open in firewalld — skipping."
+        fi
+      else
+        _rich="rule family=\"ipv4\" source address=\"${cidr}\" port port=\"${p}\" protocol=\"tcp\" accept"
+        if ! firewall-cmd --query-rich-rule="$_rich" --permanent &>/dev/null; then
+          firewall-cmd --permanent --add-rich-rule="$_rich" > /dev/null \
+            && _fw_opened+=("${p}/tcp from ${cidr} (${lbl})")
+        else
+          info "  Port ${p} from ${cidr} already open in firewalld — skipping."
+        fi
+      fi
+    done
   done
+
   [[ ${#_fw_opened[@]} -gt 0 ]] && firewall-cmd --reload > /dev/null
-  [[ ${#_fw_opened[@]} -gt 0 ]] && \
-    success "firewalld: opened ${_fw_opened[*]}" || \
-    success "firewalld: all required ports were already open."
+  [[ ${#_fw_opened[@]} -gt 0 ]] \
+    && success "firewalld: opened — ${_fw_opened[*]}" \
+    || success "firewalld: all required rules already present."
 
 else
   info "No active ufw or firewalld detected — skipping firewall step."
-  info "If you are running another firewall, allow TCP ports: ${WEBUI_PORT}, ${OLLAMA_PORT}, ${DOZZLE_PORT}"
+  if [[ "${ALLOW_FROM_CIDRS[*]}" == "any" ]]; then
+    info "If you are running another firewall, allow TCP from any source to ports:"
+  else
+    info "If you are running another firewall, allow TCP from ${ALLOW_FROM_CIDRS[*]} to ports:"
+  fi
+  info "  ${PORTAL_PORT} (portal)  ${WEBUI_PORT} (webui)  ${MODEL_MANAGER_PORT} (models)  ${OLLAMA_PORT} (ollama)  ${DOZZLE_PORT} (logs)"
 fi
 
 # ── Build Intel GPU image ──────────────────────────────────────────────────────

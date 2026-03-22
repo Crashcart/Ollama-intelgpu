@@ -96,16 +96,18 @@ docker exec olama ollama pull llama3.2:3b
 
 Open **http://localhost:45200** — the unified portal loads with Chat, Models, and Logs all accessible from the top nav bar. Bookmark this single URL.
 
-To access from another device on the same network, use the host's IP — the installer prints it at the end:
+To access from another device, use the host's IP or hostname — the installer prints it at the end:
 
 ```
 From other devices on your network:
-  Portal (all-in-one) →  http://192.168.x.x:45200   ← bookmark this
-  Chat UI             →  http://192.168.x.x:45213
-  Model Manager       →  http://192.168.x.x:45214
-  Ollama API          →  http://192.168.x.x:11434
-  Log viewer          →  http://192.168.x.x:9999
+  Portal (all-in-one) →  http://boris.local:45200   ← bookmark this
+  Chat UI             →  http://boris.local:45213
+  Model Manager       →  http://boris.local:45214
+  Ollama API          →  http://boris.local:11434
+  Log viewer          →  http://boris.local:9999
 ```
+
+The stack binds to `0.0.0.0` so it is reachable on **all network interfaces and subnets** the host belongs to. See [Multi-Subnet Access](#multi-subnet-access) if you need to restrict which subnets can connect.
 
 ---
 
@@ -123,6 +125,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/mai
 | `--version TAG` | `latest` | Ollama image tag |
 | `--branch NAME` | auto-detected | Git branch to clone (`main` → `master` fallback) |
 | `--recreate` | off | Force-recreate all containers (pull latest images, replace existing) |
+| `--allow-from CIDR[,CIDR]` | any | Firewall: restrict UI ports to specific source subnets |
+
+**Example — allow access only from two subnets:**
+
+```bash
+bash <(curl -fsSL .../install.sh) --allow-from 192.168.1.0/24,10.5.0.0/16
+```
 
 **Example — custom ports and data directory:**
 
@@ -138,6 +147,33 @@ bash <(curl -fsSL .../install.sh) \
 ```bash
 bash scripts/install.sh --recreate
 ```
+
+---
+
+## Multi-Subnet Access
+
+The stack is designed to work across subnets out of the box:
+
+- **Docker** binds every service to `0.0.0.0` (all host interfaces)
+- **Firewall** — the installer opens the 5 UI ports from *any* source by default (`ufw allow PORT/tcp`). Use `--allow-from CIDR[,CIDR...]` to restrict instead:
+
+  ```bash
+  # Allow from two different subnets / VLANs
+  bash <(curl -fsSL .../install.sh) --allow-from 192.168.1.0/24,10.10.0.0/16
+  ```
+
+  The `ALLOW_FROM` value is stored in `docker/.env` so `uninstall.sh` removes exactly the rules that were added.
+
+- **Ollama API origins** — Ollama has its own allow-list for direct browser→API calls (`OLLAMA_ORIGINS` in `docker/.env`). The default covers all three RFC-1918 ranges (`192.168.*`, `10.*`, `172.*`) and localhost. If your hosts are on a non-standard range (e.g. Tailscale `100.64.x.x`, corporate VPN), add the prefix to `docker/.env`:
+
+  ```ini
+  # docker/.env
+  OLLAMA_ORIGINS=http://localhost,https://localhost,http://127.0.0.1,http://192.168.,http://10.,http://172.,http://100.
+  ```
+
+  Then restart: `docker compose -f /opt/olama-stack/docker/docker-compose.yml restart olama`
+
+> **Note:** Routing between subnets is an infrastructure concern (router/firewall between VLANs). The stack itself has no subnet restrictions once the host firewall is open.
 
 ---
 
