@@ -48,7 +48,7 @@ The fastest way to get the full stack running. Clones the repo, installs Docker 
 **Step 1 — Run the installer**
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh)
 ```
 
 The installer will:
@@ -125,7 +125,7 @@ The stack binds to `0.0.0.0` so it is reachable on **all network interfaces and 
 ## Installer Options
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/install.sh) [OPTIONS]
+bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh) [OPTIONS]
 ```
 
 | Flag | Default | Purpose |
@@ -215,8 +215,8 @@ The stack is designed to work across subnets out of the box:
 **Step 1 — Clone the repository**
 
 ```bash
-git clone https://github.com/Crashcart/Ollama-intelgpu.git
-cd Ollama-intelgpu
+git clone https://github.com/Crashcart/Olama-intelgpu.git
+cd Olama-intelgpu
 ```
 
 **Step 2 — Configure environment**
@@ -277,7 +277,7 @@ bash /opt/ollama-stack/scripts/uninstall.sh
 bash /opt/ollama-stack/scripts/uninstall.sh --purge
 
 # Uninstall from a machine where the repo was never cloned (one-liner)
-bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/uninstall.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/uninstall.sh)
 ```
 
 **Options:**
@@ -510,7 +510,7 @@ You (toggle ON) → Open WebUI → SearXNG → Public search engines
 
 1. In Runtipi settings → **App Stores**, add:
    ```
-   https://github.com/Crashcart/Ollama-intelgpu
+   https://github.com/Crashcart/Olama-intelgpu
    ```
 2. **Ollama (Intel GPU)** will appear in your store.
 3. Install it, then pull a model:
@@ -529,7 +529,7 @@ Copy `runtipi/apps/ollama-intel-gpu/` into your Runtipi `apps/` directory and re
 ## Directory Structure
 
 ```
-Ollama-intelgpu/
+Olama-intelgpu/
 ├── docker/
 │   ├── Dockerfile               # Ollama + Intel oneAPI GPU drivers
 │   ├── docker-compose.yml       # Full stack: portal + ollama + open-webui + model-manager + searxng + pipelines + dozzle
