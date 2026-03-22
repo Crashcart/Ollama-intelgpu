@@ -12,7 +12,7 @@
 #   --data-dir    DIR   Where data was stored (default: /opt/olama)
 #   --install-dir DIR   Where stack files were installed (default: /opt/olama-stack)
 #   --purge             Also delete the data directory (models, history, config)
-#   --keep-images       Keep Docker images (default: remove locally-built ones)
+#   --keep-images       Keep Docker images (default: remove all olama images)
 #   --yes / -y          Skip confirmation prompts
 # =============================================================================
 
@@ -59,14 +59,14 @@ while [[ $# -gt 0 ]]; do
       echo "  --data-dir    DIR   Where data is stored   (default: /opt/olama)"
       echo "  --install-dir DIR   Where stack files live (default: /opt/olama-stack)"
       echo "  --purge             Also delete the data directory (models, history, config)"
-      echo "  --keep-images       Keep Docker images     (default: remove locally-built ones)"
+      echo "  --keep-images       Keep Docker images     (default: remove all olama images)"
       echo "  --yes / -y          Skip confirmation prompts"
       exit 0 ;;
     *) warn "Unknown option: $1"; shift ;;
   esac
 done
 
-# ── Read actual ports from .env (override defaults with installed values) ──────
+# ── Read actual ports and dirs from .env ──────────────────────────────────────
 _ENV_FILE=""
 for _try in \
   "${INSTALL_DIR}/docker/.env" \
@@ -86,6 +86,9 @@ if [[ -n "$_ENV_FILE" ]]; then
   _v=$(_env_read MODEL_MANAGER_PORT); [[ -n "$_v" ]] && MODEL_MANAGER_PORT="$_v"
   _v=$(_env_read OLLAMA_PORT);        [[ -n "$_v" ]] && OLLAMA_PORT="$_v"
   _v=$(_env_read DOZZLE_PORT);        [[ -n "$_v" ]] && DOZZLE_PORT="$_v"
+  _v=$(_env_read OLLAMA_VERSION);     OLLAMA_VERSION="${_v:-latest}"
+else
+  OLLAMA_VERSION="latest"
 fi
 
 # ── Docker Compose detection ───────────────────────────────────────────────────
@@ -96,7 +99,6 @@ elif command -v docker-compose &>/dev/null; then
   COMPOSE_CMD="docker-compose"
 fi
 
-# Locate the compose file — used for compose down and for deriving data we need
 COMPOSE_FILE=""
 for _try in \
   "${INSTALL_DIR}/docker/docker-compose.yml" \
@@ -106,6 +108,27 @@ for _try in \
     break
   fi
 done
+
+# ── Gather what will actually be removed (for the summary) ───────────────────
+# Collect all olama-related images across every tag (not just :latest)
+_olama_imgs=()
+while IFS= read -r _img; do
+  [[ -n "$_img" ]] && _olama_imgs+=("$_img")
+done < <(docker images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null \
+  | grep -E "^(olama|olama-model-manager|olama-portal):" || true)
+
+# Collect Docker volumes with "olama" in the name
+_olama_vols=()
+while IFS= read -r _vol; do
+  [[ -n "$_vol" ]] && _olama_vols+=("$_vol")
+done < <(docker volume ls -q --filter "name=olama" 2>/dev/null || true)
+
+# Collect Docker networks with "olama" in the name (plus docker_default from compose)
+_olama_nets=()
+while IFS= read -r _net; do
+  [[ -n "$_net" ]] && _olama_nets+=("$_net")
+done < <(docker network ls --format "{{.Name}}" 2>/dev/null \
+  | grep -E "^(olama|docker_default$)" || true)
 
 # ── Show what will happen ──────────────────────────────────────────────────────
 sep
@@ -117,14 +140,28 @@ echo "     → tail -f ${LOG_FILE}  (safe to close terminal)"
 echo
 echo "  This will:"
 echo "    • Stop and remove all 7 Olama containers"
+
 if ! $KEEP_IMAGES; then
-  echo "    • Remove locally-built Docker images  (olama, olama-model-manager, olama-portal)"
-  echo "      Public images (open-webui, searxng, pipelines, dozzle) will be left in place"
+  if [[ ${#_olama_imgs[@]} -gt 0 ]]; then
+    echo "    • Remove Docker images:"
+    for _i in "${_olama_imgs[@]}"; do echo "        - ${_i}"; done
+  else
+    echo "    • Remove Docker images  (none found — already clean)"
+  fi
 fi
+
+if [[ ${#_olama_vols[@]} -gt 0 ]]; then
+  echo "    • Remove Docker volumes:"
+  for _v in "${_olama_vols[@]}"; do echo "        - ${_v}"; done
+fi
+
+if [[ ${#_olama_nets[@]} -gt 0 ]]; then
+  echo "    • Remove Docker networks:"
+  for _n in "${_olama_nets[@]}"; do echo "        - ${_n}"; done
+fi
+
 echo "    • Remove firewall rules added by the installer (if any)"
-if [[ -d "$INSTALL_DIR" ]]; then
-  echo "    • Delete stack files at ${INSTALL_DIR}"
-fi
+[[ -d "$INSTALL_DIR" ]] && echo "    • Delete stack files at ${INSTALL_DIR}"
 echo
 if $PURGE_DATA; then
   echo -e "  ${RED}${BOLD}--purge:  ALSO DELETE ${DATA_DIR}${NC}"
@@ -135,6 +172,8 @@ else
   echo -e "  ${YELLOW}Data at ${DATA_DIR} will be KEPT.${NC}"
   echo    "  (use --purge to also delete models, history, and config)"
 fi
+echo
+echo "  Public registry images will be left in place (open-webui, searxng, pipelines, dozzle)."
 echo
 
 # ── Confirmation prompt ────────────────────────────────────────────────────────
@@ -158,57 +197,107 @@ if $PURGE_DATA && ! $YES; then
   fi
 fi
 
-# ── Stop and remove containers ─────────────────────────────────────────────────
+# ── Stop and remove containers + volumes ──────────────────────────────────────
 sep
 info "Stopping and removing Olama containers..."
 
 if [[ -n "$COMPOSE_CMD" && -n "$COMPOSE_FILE" ]]; then
   info "Using compose file: ${COMPOSE_FILE}"
   cd "$(dirname "$COMPOSE_FILE")"
-  $COMPOSE_CMD down --remove-orphans 2>/dev/null \
-    && success "Containers stopped and removed (docker compose down)." \
+  # --volumes: removes any anonymous/named volumes declared in the compose file
+  # --remove-orphans: cleans up containers not in the current compose definition
+  $COMPOSE_CMD down --volumes --remove-orphans 2>/dev/null \
+    && success "Containers, volumes, and networks removed (docker compose down)." \
     || warn "docker compose down reported an error — containers may already be gone."
 else
-  # Compose file not found — stop and remove by container name
+  # Fallback: stop by known container names
   warn "Compose file not found — stopping containers by name..."
   _any_removed=false
-  for cname in olama olama-open-webui olama-model-manager olama-portal olama-searxng olama-pipelines olama-dozzle; do
+  for cname in olama olama-open-webui olama-model-manager olama-portal \
+                olama-searxng olama-pipelines olama-dozzle; do
     if docker inspect "$cname" &>/dev/null 2>&1; then
-      docker stop  "$cname" 2>/dev/null || true
-      docker rm    "$cname" 2>/dev/null || true
-      info "  Removed: ${cname}"
+      docker stop "$cname" 2>/dev/null || true
+      docker rm   "$cname" 2>/dev/null || true
+      info "  Removed container: ${cname}"
       _any_removed=true
     fi
   done
-  $KEEP_IMAGES || true
-  $_any_removed && success "Containers removed." || info "No running containers found — already clean."
-fi
+  $_any_removed \
+    && success "Containers removed." \
+    || info "No running containers found — already clean."
 
-# ── Remove locally-built Docker images ────────────────────────────────────────
-if ! $KEEP_IMAGES; then
-  sep
-  info "Removing locally-built Docker images..."
-  _imgs_removed=()
-  for img in \
-    "olama:latest" \
-    "olama-model-manager:latest" \
-    "olama-portal:latest"; do
-    if docker image inspect "$img" &>/dev/null 2>&1; then
-      docker rmi "$img" 2>/dev/null \
-        && _imgs_removed+=("$img") \
-        || warn "  Could not remove ${img} — may still be referenced by another container."
+  # Remove networks in fallback path (compose down handles this in normal path)
+  for _net in olama_default docker_default; do
+    if docker network inspect "$_net" &>/dev/null 2>&1; then
+      docker network rm "$_net" 2>/dev/null \
+        && info "  Removed network: ${_net}" || true
     fi
   done
+fi
+
+# ── Remove Docker volumes (any that compose down may have missed) ─────────────
+if [[ ${#_olama_vols[@]} -gt 0 ]]; then
+  sep
+  info "Removing Docker volumes..."
+  for _vol in "${_olama_vols[@]}"; do
+    docker volume rm "$_vol" 2>/dev/null \
+      && success "  Removed volume: ${_vol}" \
+      || warn "  Could not remove volume ${_vol} — may still be in use."
+  done
+fi
+
+# ── Remove Docker images ───────────────────────────────────────────────────────
+if ! $KEEP_IMAGES; then
+  sep
+  info "Removing Docker images..."
+
+  # Re-query images now that containers are stopped (removes "in use" blocks)
+  _imgs_to_remove=()
+  while IFS= read -r _img; do
+    [[ -n "$_img" ]] && _imgs_to_remove+=("$_img")
+  done < <(docker images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null \
+    | grep -E "^(olama|olama-model-manager|olama-portal):" || true)
+
+  _imgs_removed=()
+  for img in "${_imgs_to_remove[@]}"; do
+    docker rmi "$img" 2>/dev/null \
+      && _imgs_removed+=("$img") \
+      || warn "  Could not remove ${img} — may still be referenced by another container."
+  done
+
+  # Also remove any dangling (untagged) layers left by our builds
+  _dangling=$(docker images -q --filter "dangling=true" 2>/dev/null || true)
+  if [[ -n "$_dangling" ]]; then
+    echo "$_dangling" | xargs docker rmi 2>/dev/null || true
+    info "  Removed dangling build layers."
+  fi
+
   if [[ ${#_imgs_removed[@]} -gt 0 ]]; then
     success "Images removed: ${_imgs_removed[*]}"
   else
     info "No locally-built images found — already clean."
   fi
+
   echo
-  info "Public registry images were left in place:"
+  info "Public registry images left in place (other stacks may use them):"
   info "  ghcr.io/open-webui/open-webui:main  ghcr.io/open-webui/pipelines:main"
   info "  searxng/searxng:latest  amir20/dozzle:latest"
-  info "To remove them too:  docker rmi ghcr.io/open-webui/open-webui:main ghcr.io/open-webui/pipelines:main searxng/searxng:latest amir20/dozzle:latest"
+  info "To remove them too:"
+  info "  docker rmi ghcr.io/open-webui/open-webui:main ghcr.io/open-webui/pipelines:main \\"
+  info "             searxng/searxng:latest amir20/dozzle:latest"
+fi
+
+# ── Remove remaining olama networks ───────────────────────────────────────────
+# compose down removes the compose-managed network, but scan for any stragglers
+_remaining_nets=$(docker network ls --format "{{.Name}}" 2>/dev/null \
+  | grep -E "^olama" || true)
+if [[ -n "$_remaining_nets" ]]; then
+  sep
+  info "Removing remaining Docker networks..."
+  while IFS= read -r _net; do
+    [[ -n "$_net" ]] && docker network rm "$_net" 2>/dev/null \
+      && info "  Removed network: ${_net}" || true
+  done <<< "$_remaining_nets"
 fi
 
 # ── Remove firewall rules ──────────────────────────────────────────────────────
@@ -256,9 +345,9 @@ fi
 # ── Remove install directory (stack files, not data) ──────────────────────────
 sep
 if [[ -d "$INSTALL_DIR" ]]; then
-  # Safety guard: never delete install dir if it contains (or is) the data dir
+  # Safety: never delete if install dir contains or overlaps the data dir
   if [[ "$DATA_DIR" == "${INSTALL_DIR}"* || "$INSTALL_DIR" == "${DATA_DIR}"* ]]; then
-    warn "Install dir ${INSTALL_DIR} overlaps with data dir ${DATA_DIR} — skipping directory removal."
+    warn "Install dir ${INSTALL_DIR} overlaps with data dir ${DATA_DIR} — skipping removal."
   else
     info "Removing stack files at ${INSTALL_DIR}..."
     sudo rm -rf "$INSTALL_DIR" \
@@ -293,10 +382,14 @@ if ! $PURGE_DATA && [[ -d "$DATA_DIR" ]]; then
   echo    "    ├── searxng/    — SearXNG config"
   echo    "    └── pipelines/  — custom pipeline scripts"
   echo
-  echo    "  To delete it:   sudo rm -rf ${DATA_DIR}"
-  echo    "  To reinstall:   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh)"
+  echo    "  To delete it now:  sudo rm -rf ${DATA_DIR}"
+  echo    "  To reinstall:      bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh)"
   echo
 fi
 
+# Hint: free up build cache if the user wants to reclaim more disk space
+echo    "  To also free Docker build cache (saves several GB):"
+echo    "    docker builder prune --all"
+echo
 echo    "  Full uninstall log: ${LOG_FILE}"
 sep

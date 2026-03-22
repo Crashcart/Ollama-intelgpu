@@ -306,6 +306,122 @@ _stamp_env "$ENV_FILE" \
 success ".env ready at ${ENV_FILE}"
 info "Review and adjust ${ENV_FILE} at any time — then run: docker compose up -d"
 
+# ── Check for port conflicts ───────────────────────────────────────────────────
+# Runs after .env is written so we have the final port values.
+# Any resolved alternatives are stamped back into .env before the
+# firewall and container-start steps that depend on them.
+sep
+info "Checking for port conflicts..."
+
+# Returns 0 if the port is already listening on the host, 1 if free.
+_port_in_use() {
+  local port="$1"
+  if command -v ss &>/dev/null; then
+    ss -tlnp 2>/dev/null | grep -qE ":${port}[ \t]"
+  elif command -v netstat &>/dev/null; then
+    netstat -tlnp 2>/dev/null | grep -qE ":${port}[ \t]"
+  else
+    # bash TCP fallback (may be unavailable in restricted shells)
+    (echo "" >/dev/tcp/127.0.0.1/"$port") 2>/dev/null
+  fi
+}
+
+# Returns a human-readable process name occupying the port (best-effort).
+_port_owner() {
+  local port="$1"
+  local _who=""
+  if command -v ss &>/dev/null; then
+    _who=$(ss -tlnp 2>/dev/null \
+      | grep -E ":${port}[ \t]" \
+      | grep -oP 'users:\(\("\K[^"]+' | head -1 || true)
+  fi
+  if [[ -z "$_who" ]] && command -v fuser &>/dev/null; then
+    local _pid
+    _pid=$(fuser "${port}/tcp" 2>/dev/null | awk '{print $1}' || true)
+    [[ -n "$_pid" ]] && _who=$(ps -p "$_pid" -o comm= 2>/dev/null || true)
+  fi
+  echo "${_who:-unknown process}"
+}
+
+# Checks one port; if it is in use by a non-olama process, prompts for
+# an alternative and updates the named variable.
+_resolve_port() {
+  local var_name="$1"   # shell variable to read/write, e.g. PORTAL_PORT
+  local label="$2"      # human label, e.g. "Portal"
+  local flag_name="$3"  # flag the user can pass to avoid this, e.g. --portal-port
+  local current="${!var_name}"
+
+  if ! _port_in_use "$current"; then
+    success "  :${current}  ${label} — free"
+    return 0
+  fi
+
+  # Port is busy — check if it already belongs to one of our containers
+  # (happens on re-install / --recreate).  If so, it is fine to reuse.
+  local _owner
+  _owner=$(_port_owner "$current")
+  if echo "$_owner" | grep -qiE "olama|docker(-proxy)?"; then
+    info "  :${current}  ${label} — in use by existing Olama container (ok)"
+    return 0
+  fi
+
+  # Real conflict — tell the user what is using the port
+  echo
+  warn "┌─ PORT CONFLICT ─────────────────────────────────────────────"
+  warn "│  :${current}  is already in use by: ${_owner}"
+  warn "│  This port was requested for: ${label}"
+  warn "└─────────────────────────────────────────────────────────────"
+  echo
+
+  # Non-interactive (curl-pipe without a tty) — cannot prompt, must abort
+  if [[ ! -t 0 ]]; then
+    error "Cannot resolve port conflict non-interactively.\nRerun with ${flag_name} PORT to choose a free port."
+  fi
+
+  while true; do
+    read -rp "  Enter an alternative port for ${label} [or press Enter to abort]: " _alt
+    echo
+    [[ -z "$_alt" ]] && error "Aborted — port conflict on :${current} not resolved."
+
+    if ! [[ "$_alt" =~ ^[0-9]+$ ]] || (( _alt < 1024 || _alt > 65535 )); then
+      warn "  Invalid — enter a number between 1024 and 65535."
+      continue
+    fi
+
+    if _port_in_use "$_alt"; then
+      local _alt_owner
+      _alt_owner=$(_port_owner "$_alt")
+      warn "  :${_alt} is also in use by ${_alt_owner} — try another."
+      continue
+    fi
+
+    printf -v "$var_name" '%s' "$_alt"
+    success "  ${label} will use port ${_alt} instead of ${current}."
+    break
+  done
+}
+
+_conflicts=false
+_resolve_port PORTAL_PORT        "Portal (unified UI)"  "--portal-port"    || _conflicts=true
+_resolve_port WEBUI_PORT         "Open WebUI (chat)"    "--webui-port"     || _conflicts=true
+_resolve_port MODEL_MANAGER_PORT "Model Manager"        "--model-manager-port" || _conflicts=true
+_resolve_port OLLAMA_PORT        "Ollama API"           "--port"           || _conflicts=true
+_resolve_port DOZZLE_PORT        "Dozzle (log viewer)"  "--dozzle-port"    || _conflicts=true
+
+# If any port was reassigned, update .env so the rest of the install uses
+# the new values (firewall rules, container start, final URL printout).
+if [[ "$PORTAL_PORT$WEBUI_PORT$MODEL_MANAGER_PORT$OLLAMA_PORT$DOZZLE_PORT" != \
+      "$(grep -E "^(PORTAL|WEBUI|MODEL_MANAGER|OLLAMA|DOZZLE)_PORT=" "$ENV_FILE" \
+         | cut -d= -f2 | tr '\n' ' ' | xargs 2>/dev/null)" ]]; then
+  _stamp_env "$ENV_FILE" \
+    PORTAL_PORT          "${PORTAL_PORT}" \
+    WEBUI_PORT           "${WEBUI_PORT}" \
+    MODEL_MANAGER_PORT   "${MODEL_MANAGER_PORT}" \
+    OLLAMA_PORT          "${OLLAMA_PORT}" \
+    DOZZLE_PORT          "${DOZZLE_PORT}"
+  info "Updated ${ENV_FILE} with reassigned ports."
+fi
+
 # ── Open firewall ports for LAN access ───────────────────────────────────────
 # Docker binds to 0.0.0.0 (all interfaces) so remote machines can reach the
 # ports at the network level — but most Linux distros block them by default

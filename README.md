@@ -58,11 +58,12 @@ The installer will:
 3. Clone the repo to `/opt/olama-stack/`
 4. Create data directories under `/opt/olama/`
 5. Write `docker/.env` (or update it if one already exists)
-6. Open the four host-facing ports in ufw or firewalld for LAN access
-7. Build the Ollama Intel GPU image (~5 min first run — installs Intel oneAPI drivers)
-8. Pull images for any containers that do not already exist; skip existing ones
-9. Start all 7 containers
-10. Wait until Ollama and Open WebUI are healthy
+6. **Check all 5 ports for conflicts** — if any port is already in use by another process, print what is using it and ask for an alternative before continuing
+7. Open the host-facing ports in ufw or firewalld for LAN access
+8. Build the Ollama Intel GPU image (~5 min first run — installs Intel oneAPI drivers)
+9. Pull images for any containers that do not already exist; skip existing ones
+10. Start all 7 containers
+11. Wait until Ollama and Open WebUI are healthy
 
 The installer is **idempotent** — safe to re-run after an upgrade or a failed run. It updates ports and GPU group IDs in an existing `.env` without touching your custom settings (API keys, model names, feature flags, etc.).
 
@@ -200,7 +201,7 @@ Open **http://localhost:45200** for the unified portal (Chat + Models + Logs in 
 Use `scripts/uninstall.sh` to stop and remove the stack. Your data is kept by default — pass `--purge` to also delete models, chat history, and config.
 
 ```bash
-# Stop and remove containers + locally-built images; keep data
+# Stop and remove containers, images, volumes, networks; keep data
 bash /opt/olama-stack/scripts/uninstall.sh
 
 # Also delete all models, chat history, and config (irreversible)
@@ -217,17 +218,25 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/mai
 | `--data-dir DIR` | `/opt/olama` | Where data is stored |
 | `--install-dir DIR` | `/opt/olama-stack` | Where stack files are installed |
 | `--purge` | off | Also delete the data directory (models, history, config) |
-| `--keep-images` | off | Keep Docker images (default: remove locally-built ones) |
+| `--keep-images` | off | Keep Docker images (default: remove all olama images) |
 | `--yes` / `-y` | off | Skip confirmation prompts |
 
 The script:
-1. Stops and removes all 7 Olama containers (`docker compose down`)
-2. Removes the three locally-built images (`olama`, `olama-model-manager`, `olama-portal`)
-3. Removes firewall rules that the installer added
-4. Deletes the stack files at `--install-dir`
-5. If `--purge`: asks you to type `purge` to confirm, then deletes `--data-dir`
+1. Shows a full list of what will be removed (containers, images, volumes, networks) before asking
+2. Stops and removes all 7 Olama containers (`docker compose down --volumes --remove-orphans`)
+3. Removes **all** locally-built images across every tag — `olama:latest`, `olama:0.6.2`, etc.
+4. Removes any Docker volumes and networks belonging to the stack
+5. Removes dangling build layers left over from `docker compose build`
+6. Removes firewall rules the installer added
+7. Deletes the stack files at `--install-dir`
+8. If `--purge`: requires you to type `purge` (not just `y`) to confirm, then deletes `--data-dir`
 
-Public registry images (`open-webui`, `searxng`, `pipelines`, `dozzle`) are always left in place since other stacks may use them. Instructions to remove them are printed at the end if needed.
+Public registry images (`open-webui`, `searxng`, `pipelines`, `dozzle`) are always left in place since other stacks may use them — the script prints the exact `docker rmi` command if you want to remove them too.
+
+To also reclaim Docker build cache after uninstalling:
+```bash
+docker builder prune --all
+```
 
 ---
 
