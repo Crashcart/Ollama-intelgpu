@@ -35,6 +35,10 @@ DATA_DIR   = Path(os.environ.get("DATA_DIR",  "/data"))
 DRIVES_DIR = Path(os.environ.get("DRIVES_DIR", "/drives"))
 MIN_SIZE_B = int(os.environ.get("MIN_SIZE_MB", "100")) * 1024 * 1024
 
+# Cache scan results to avoid re-walking potentially 100 GB of model files on every request.
+_SCAN_CACHE: tuple[float, list] | None = None
+SCAN_TTL = 30  # seconds
+
 # Extensions commonly associated with large AI/data files
 LARGE_EXTS = {
     ".gguf", ".bin", ".safetensors", ".pt", ".pth", ".onnx",
@@ -108,6 +112,16 @@ def file_info(path: Path) -> dict:
 
 
 def scan() -> list[dict]:
+    global _SCAN_CACHE
+    now = time.time()
+    if _SCAN_CACHE and now - _SCAN_CACHE[0] < SCAN_TTL:
+        return _SCAN_CACHE[1]
+    results = _scan()
+    _SCAN_CACHE = (now, results)
+    return results
+
+
+def _scan() -> list[dict]:
     results = []
     try:
         for root, dirs, files in os.walk(DATA_DIR, followlinks=False):
@@ -228,6 +242,9 @@ def move_file(req: MoveRequest):
                 pass
         raise HTTPException(500, str(e))
 
+    global _SCAN_CACHE
+    _SCAN_CACHE = None  # invalidate so next list reflects the move
+
     return {
         "moved":   str(rel),
         "from":    str(src),
@@ -273,6 +290,8 @@ def restore_file(req: RestoreRequest):
             except Exception:
                 pass
         raise HTTPException(500, str(e))
+
+    _SCAN_CACHE = None  # invalidate so next list reflects the restore
 
     return {
         "restored": req.path,

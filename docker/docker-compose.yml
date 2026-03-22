@@ -139,7 +139,7 @@ services:
     # start_period gives the engine time to initialise before failures count.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -280,7 +280,7 @@ services:
     # Falls back to wget if curl is not present in the image.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || wget -qO/dev/null http://localhost:8080/"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
       start_period: 30s
@@ -339,7 +339,7 @@ services:
     # SearXNG runs on Alpine (busybox wget, no curl by default).
     healthcheck:
       test: ["CMD-SHELL", "wget -qO/dev/null http://localhost:8080/ || exit 1"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -396,7 +396,7 @@ services:
 
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9099/ || exit 1"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -457,9 +457,9 @@ services:
       - ollama_sockets:/sockets
 
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('localhost', 8080), 2).close()\""]
+      interval: 60s
+      timeout: 5s
       retries: 3
       start_period: 20s
 
@@ -559,9 +559,9 @@ services:
       - ${DATA_DIR:-/opt/ollama}/memory:/data
 
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('localhost', 8080), 2).close()\""]
+      interval: 60s
+      timeout: 5s
       retries: 3
       start_period: 20s
 
@@ -611,9 +611,9 @@ services:
       - ${DRIVES_DIR:-/mnt}:/drives
 
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('localhost', 8080), 2).close()\""]
+      interval: 60s
+      timeout: 5s
       retries: 3
       start_period: 20s
 
@@ -670,9 +670,9 @@ services:
       - ollama_sockets:/sockets
 
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('localhost', 8080), 2).close()\""]
+      interval: 60s
+      timeout: 5s
       retries: 3
       start_period: 20s
 

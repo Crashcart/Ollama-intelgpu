@@ -36,6 +36,10 @@ OLLAMA_URL    = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434").rstrip(
 OLLAMA_SOCKET = os.environ.get("OLLAMA_SOCKET", "")
 DB_PATH       = os.environ.get("DB_PATH", "/data/ghost.db")
 
+# Commit tokens to SQLite in batches to reduce I/O contention during inference.
+# Lower = more durability (fewer tokens lost on crash); higher = less disk pressure.
+TOKEN_COMMIT_BATCH = 20
+
 # ---------------------------------------------------------------------------
 # Ollama client factory — UDS when available, TCP fallback
 # ---------------------------------------------------------------------------
@@ -104,6 +108,7 @@ async def _generate(task_id: str, model: str, prompt: str) -> None:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             seq = 0
+            pending = 0
             async with _make_ollama_client(timeout=None) as client:
                 async with client.stream(
                     "POST",
@@ -121,10 +126,15 @@ async def _generate(task_id: str, model: str, prompt: str) -> None:
                                 "INSERT OR IGNORE INTO tokens VALUES (?,?,?)",
                                 (task_id, seq, token),
                             )
-                            await db.commit()
                             seq += 1
+                            pending += 1
+                            if pending >= TOKEN_COMMIT_BATCH:
+                                await db.commit()
+                                pending = 0
                         if chunk.get("done"):
                             break
+            if pending:
+                await db.commit()
             await db.execute(
                 "UPDATE tasks SET status='complete' WHERE id=?", (task_id,)
             )
