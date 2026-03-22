@@ -205,6 +205,9 @@ if [[ -n "$COMPOSE_CMD" && -n "$COMPOSE_FILE" ]]; then
   $COMPOSE_CMD down --volumes --remove-orphans 2>/dev/null \
     && success "Containers, volumes, and networks removed (docker compose down)." \
     || warn "docker compose down reported an error — containers may already be gone."
+  # Give the kernel a moment to release bind-mounts (e.g. the UDS socket volume)
+  # before we attempt manual volume removal below.
+  sleep 2
 else
   warn "Compose file not found — stopping containers by name..."
   _any_removed=false
@@ -243,9 +246,16 @@ if [[ ${#_remaining_vols[@]} -gt 0 ]]; then
   sep
   info "Removing Docker volumes..."
   for _vol in "${_remaining_vols[@]}"; do
-    docker volume rm -f "$_vol" 2>/dev/null \
-      && success "  Removed volume: ${_vol}" \
-      || warn "  Could not remove volume ${_vol} — skipping."
+    _removed=false
+    for _try in 1 2 3; do
+      if docker volume rm -f "$_vol" 2>/dev/null; then
+        success "  Removed volume: ${_vol}"
+        _removed=true
+        break
+      fi
+      [[ $_try -lt 3 ]] && { info "  Volume ${_vol} busy — retrying in ${_try}s..."; sleep "$_try"; }
+    done
+    $_removed || warn "  Could not remove volume ${_vol} after 3 attempts — skipping."
   done
 fi
 
