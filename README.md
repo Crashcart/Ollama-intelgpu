@@ -195,6 +195,42 @@ Open **http://localhost:45200** for the unified portal (Chat + Models + Logs in 
 
 ---
 
+## Uninstalling
+
+Use `scripts/uninstall.sh` to stop and remove the stack. Your data is kept by default — pass `--purge` to also delete models, chat history, and config.
+
+```bash
+# Stop and remove containers + locally-built images; keep data
+bash /opt/olama-stack/scripts/uninstall.sh
+
+# Also delete all models, chat history, and config (irreversible)
+bash /opt/olama-stack/scripts/uninstall.sh --purge
+
+# Uninstall from a machine where the repo was never cloned (one-liner)
+bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/uninstall.sh)
+```
+
+**Options:**
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--data-dir DIR` | `/opt/olama` | Where data is stored |
+| `--install-dir DIR` | `/opt/olama-stack` | Where stack files are installed |
+| `--purge` | off | Also delete the data directory (models, history, config) |
+| `--keep-images` | off | Keep Docker images (default: remove locally-built ones) |
+| `--yes` / `-y` | off | Skip confirmation prompts |
+
+The script:
+1. Stops and removes all 7 Olama containers (`docker compose down`)
+2. Removes the three locally-built images (`olama`, `olama-model-manager`, `olama-portal`)
+3. Removes firewall rules that the installer added
+4. Deletes the stack files at `--install-dir`
+5. If `--purge`: asks you to type `purge` to confirm, then deletes `--data-dir`
+
+Public registry images (`open-webui`, `searxng`, `pipelines`, `dozzle`) are always left in place since other stacks may use them. Instructions to remove them are printed at the end if needed.
+
+---
+
 ## Upgrading Containers
 
 Use `scripts/update.sh` to pull fresh images for the UI services and fix the "Ollama is running" blank-page issue:
@@ -427,6 +463,7 @@ Olama-intelgpu/
 │       └── settings.yml         # SearXNG config (auto-mounted read-only)
 ├── scripts/
 │   ├── install.sh               # One-command full-stack installer
+│   ├── uninstall.sh             # Remove containers, images, firewall rules; optionally purge data
 │   ├── update.sh                # Pull fresh images and recreate UI containers
 │   ├── pull-model.sh            # Interactive model downloader (CLI)
 │   └── logs.sh                  # Log viewer, exporter, debug mode toggle

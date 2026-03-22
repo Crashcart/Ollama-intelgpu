@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+# =============================================================================
+# uninstall.sh — Remove the Olama Intel GPU stack
+#
+# Usage (from a local clone):
+#   bash scripts/uninstall.sh [OPTIONS]
+#
+# Usage (one-liner curl pipe — repo must be public):
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/uninstall.sh) [OPTIONS]
+#
+# Options:
+#   --data-dir    DIR   Where data was stored (default: /opt/olama)
+#   --install-dir DIR   Where stack files were installed (default: /opt/olama-stack)
+#   --purge             Also delete the data directory (models, history, config)
+#   --keep-images       Keep Docker images (default: remove locally-built ones)
+#   --yes / -y          Skip confirmation prompts
+# =============================================================================
+
+set -euo pipefail
+
+# ── Survive terminal disconnect; capture all output ───────────────────────────
+trap '' HUP
+
+LOG_FILE="${LOG_FILE:-/tmp/olama-uninstall.log}"
+touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/olama-uninstall-$(id -u).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+# ── Defaults ──────────────────────────────────────────────────────────────────
+DATA_DIR="${DATA_DIR:-/opt/olama}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/olama-stack}"
+PORTAL_PORT="${PORTAL_PORT:-45200}"
+WEBUI_PORT="${WEBUI_PORT:-45213}"
+MODEL_MANAGER_PORT="${MODEL_MANAGER_PORT:-45214}"
+OLLAMA_PORT="${OLLAMA_PORT:-11434}"
+DOZZLE_PORT="${DOZZLE_PORT:-9999}"
+PURGE_DATA=false
+KEEP_IMAGES=false
+YES=false
+
+# ── Color helpers ──────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+info()    { echo -e "${CYAN}[olama]${NC} $*"; }
+success() { echo -e "${GREEN}[olama]${NC} $*"; }
+warn()    { echo -e "${YELLOW}[olama]${NC} $*"; }
+error()   { echo -e "${RED}[olama]${NC} $*" >&2; echo -e "${RED}[olama]${NC} Full log: ${LOG_FILE}" >&2; exit 1; }
+sep()     { echo "──────────────────────────────────────────────────────"; }
+
+# ── Argument parsing ───────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --data-dir)    DATA_DIR="$2";    shift 2 ;;
+    --install-dir) INSTALL_DIR="$2"; shift 2 ;;
+    --purge)       PURGE_DATA=true;  shift ;;
+    --keep-images) KEEP_IMAGES=true; shift ;;
+    --yes|-y)      YES=true;         shift ;;
+    --help|-h)
+      echo "Usage: $0 [--data-dir DIR] [--install-dir DIR] [--purge] [--keep-images] [--yes]"
+      echo
+      echo "  --data-dir    DIR   Where data is stored   (default: /opt/olama)"
+      echo "  --install-dir DIR   Where stack files live (default: /opt/olama-stack)"
+      echo "  --purge             Also delete the data directory (models, history, config)"
+      echo "  --keep-images       Keep Docker images     (default: remove locally-built ones)"
+      echo "  --yes / -y          Skip confirmation prompts"
+      exit 0 ;;
+    *) warn "Unknown option: $1"; shift ;;
+  esac
+done
+
+# ── Read actual ports from .env (override defaults with installed values) ──────
+_ENV_FILE=""
+for _try in \
+  "${INSTALL_DIR}/docker/.env" \
+  "$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo ".")/../docker/.env"; do
+  if [[ -f "$_try" ]]; then
+    _ENV_FILE="$(realpath "$_try")"
+    break
+  fi
+done
+
+if [[ -n "$_ENV_FILE" ]]; then
+  info "Reading installed config from ${_ENV_FILE}..."
+  _env_read() { grep -E "^${1}=" "$_ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true; }
+  _v=$(_env_read DATA_DIR);           [[ -n "$_v" ]] && DATA_DIR="$_v"
+  _v=$(_env_read PORTAL_PORT);        [[ -n "$_v" ]] && PORTAL_PORT="$_v"
+  _v=$(_env_read WEBUI_PORT);         [[ -n "$_v" ]] && WEBUI_PORT="$_v"
+  _v=$(_env_read MODEL_MANAGER_PORT); [[ -n "$_v" ]] && MODEL_MANAGER_PORT="$_v"
+  _v=$(_env_read OLLAMA_PORT);        [[ -n "$_v" ]] && OLLAMA_PORT="$_v"
+  _v=$(_env_read DOZZLE_PORT);        [[ -n "$_v" ]] && DOZZLE_PORT="$_v"
+fi
+
+# ── Docker Compose detection ───────────────────────────────────────────────────
+COMPOSE_CMD=""
+if docker compose version &>/dev/null 2>&1; then
+  COMPOSE_CMD="docker compose"
+elif command -v docker-compose &>/dev/null; then
+  COMPOSE_CMD="docker-compose"
+fi
+
+# Locate the compose file — used for compose down and for deriving data we need
+COMPOSE_FILE=""
+for _try in \
+  "${INSTALL_DIR}/docker/docker-compose.yml" \
+  "$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo ".")/../docker/docker-compose.yml"; do
+  if [[ -f "$_try" ]]; then
+    COMPOSE_FILE="$(realpath "$_try")"
+    break
+  fi
+done
+
+# ── Show what will happen ──────────────────────────────────────────────────────
+sep
+echo -e "${BOLD}Olama Stack — Uninstaller${NC}"
+sep
+echo
+echo "  Uninstall log: ${LOG_FILE}"
+echo "     → tail -f ${LOG_FILE}  (safe to close terminal)"
+echo
+echo "  This will:"
+echo "    • Stop and remove all 7 Olama containers"
+if ! $KEEP_IMAGES; then
+  echo "    • Remove locally-built Docker images  (olama, olama-model-manager, olama-portal)"
+  echo "      Public images (open-webui, searxng, pipelines, dozzle) will be left in place"
+fi
+echo "    • Remove firewall rules added by the installer (if any)"
+if [[ -d "$INSTALL_DIR" ]]; then
+  echo "    • Delete stack files at ${INSTALL_DIR}"
+fi
+echo
+if $PURGE_DATA; then
+  echo -e "  ${RED}${BOLD}--purge:  ALSO DELETE ${DATA_DIR}${NC}"
+  echo -e "  ${RED}          This permanently removes all models, chat history, and config.${NC}"
+  _data_size=$(du -sh "$DATA_DIR" 2>/dev/null | cut -f1 || echo "?")
+  echo -e "  ${RED}          Estimated size: ${_data_size}${NC}"
+else
+  echo -e "  ${YELLOW}Data at ${DATA_DIR} will be KEPT.${NC}"
+  echo    "  (use --purge to also delete models, history, and config)"
+fi
+echo
+
+# ── Confirmation prompt ────────────────────────────────────────────────────────
+if ! $YES; then
+  read -rp "  Proceed with uninstall? [y/N] " _confirm
+  echo
+  [[ "$_confirm" =~ ^[Yy]$ ]] || { info "Aborted — nothing was changed."; exit 0; }
+fi
+
+# ── Extra confirmation for --purge ────────────────────────────────────────────
+if $PURGE_DATA && ! $YES; then
+  echo -e "  ${RED}${BOLD}FINAL WARNING — this cannot be undone.${NC}"
+  echo    "  All model weights, chat history, RAG documents, and config"
+  echo    "  at ${DATA_DIR} will be permanently deleted."
+  echo
+  read -rp "  Type 'purge' to confirm: " _purge_confirm
+  echo
+  if [[ "$_purge_confirm" != "purge" ]]; then
+    warn "Purge not confirmed — data will be kept. Continuing with container removal only."
+    PURGE_DATA=false
+  fi
+fi
+
+# ── Stop and remove containers ─────────────────────────────────────────────────
+sep
+info "Stopping and removing Olama containers..."
+
+if [[ -n "$COMPOSE_CMD" && -n "$COMPOSE_FILE" ]]; then
+  info "Using compose file: ${COMPOSE_FILE}"
+  cd "$(dirname "$COMPOSE_FILE")"
+  $COMPOSE_CMD down --remove-orphans 2>/dev/null \
+    && success "Containers stopped and removed (docker compose down)." \
+    || warn "docker compose down reported an error — containers may already be gone."
+else
+  # Compose file not found — stop and remove by container name
+  warn "Compose file not found — stopping containers by name..."
+  _any_removed=false
+  for cname in olama olama-open-webui olama-model-manager olama-portal olama-searxng olama-pipelines olama-dozzle; do
+    if docker inspect "$cname" &>/dev/null 2>&1; then
+      docker stop  "$cname" 2>/dev/null || true
+      docker rm    "$cname" 2>/dev/null || true
+      info "  Removed: ${cname}"
+      _any_removed=true
+    fi
+  done
+  $KEEP_IMAGES || true
+  $_any_removed && success "Containers removed." || info "No running containers found — already clean."
+fi
+
+# ── Remove locally-built Docker images ────────────────────────────────────────
+if ! $KEEP_IMAGES; then
+  sep
+  info "Removing locally-built Docker images..."
+  _imgs_removed=()
+  for img in \
+    "olama:latest" \
+    "olama-model-manager:latest" \
+    "olama-portal:latest"; do
+    if docker image inspect "$img" &>/dev/null 2>&1; then
+      docker rmi "$img" 2>/dev/null \
+        && _imgs_removed+=("$img") \
+        || warn "  Could not remove ${img} — may still be referenced by another container."
+    fi
+  done
+  if [[ ${#_imgs_removed[@]} -gt 0 ]]; then
+    success "Images removed: ${_imgs_removed[*]}"
+  else
+    info "No locally-built images found — already clean."
+  fi
+  echo
+  info "Public registry images were left in place:"
+  info "  ghcr.io/open-webui/open-webui:main  ghcr.io/open-webui/pipelines:main"
+  info "  searxng/searxng:latest  amir20/dozzle:latest"
+  info "To remove them too:  docker rmi ghcr.io/open-webui/open-webui:main ghcr.io/open-webui/pipelines:main searxng/searxng:latest amir20/dozzle:latest"
+fi
+
+# ── Remove firewall rules ──────────────────────────────────────────────────────
+sep
+info "Removing firewall rules added by the installer..."
+_fw_ports=("${PORTAL_PORT}" "${WEBUI_PORT}" "${MODEL_MANAGER_PORT}" "${OLLAMA_PORT}" "${DOZZLE_PORT}")
+_fw_labels=("Portal (unified UI)" "Open WebUI (chat)" "Model Manager" "Ollama API" "Dozzle (logs)")
+_fw_removed=()
+
+if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+  info "ufw is active — removing olama rules..."
+  for i in "${!_fw_ports[@]}"; do
+    p="${_fw_ports[$i]}"
+    if ufw status | grep -qE "^${p}[/ ]"; then
+      ufw delete allow "${p}/tcp" >/dev/null 2>&1 \
+        && _fw_removed+=("${p}/tcp (${_fw_labels[$i]})")
+    else
+      info "  Port ${p} not in ufw — skipping."
+    fi
+  done
+  [[ ${#_fw_removed[@]} -gt 0 ]] \
+    && success "ufw: removed rules for: ${_fw_removed[*]}" \
+    || info "ufw: no olama rules found — already clean."
+
+elif command -v firewall-cmd &>/dev/null && firewall-cmd --state 2>/dev/null | grep -q "running"; then
+  info "firewalld is active — removing olama rules..."
+  for i in "${!_fw_ports[@]}"; do
+    p="${_fw_ports[$i]}"
+    if firewall-cmd --query-port="${p}/tcp" --permanent &>/dev/null; then
+      firewall-cmd --permanent --remove-port="${p}/tcp" >/dev/null 2>&1 \
+        && _fw_removed+=("${p}/tcp (${_fw_labels[$i]})")
+    else
+      info "  Port ${p} not in firewalld — skipping."
+    fi
+  done
+  [[ ${#_fw_removed[@]} -gt 0 ]] && firewall-cmd --reload >/dev/null
+  [[ ${#_fw_removed[@]} -gt 0 ]] \
+    && success "firewalld: removed rules for: ${_fw_removed[*]}" \
+    || info "firewalld: no olama rules found — already clean."
+
+else
+  info "No active ufw or firewalld detected — skipping firewall step."
+fi
+
+# ── Remove install directory (stack files, not data) ──────────────────────────
+sep
+if [[ -d "$INSTALL_DIR" ]]; then
+  # Safety guard: never delete install dir if it contains (or is) the data dir
+  if [[ "$DATA_DIR" == "${INSTALL_DIR}"* || "$INSTALL_DIR" == "${DATA_DIR}"* ]]; then
+    warn "Install dir ${INSTALL_DIR} overlaps with data dir ${DATA_DIR} — skipping directory removal."
+  else
+    info "Removing stack files at ${INSTALL_DIR}..."
+    sudo rm -rf "$INSTALL_DIR" \
+      && success "Removed ${INSTALL_DIR}"
+  fi
+else
+  info "Install directory ${INSTALL_DIR} not found — nothing to remove."
+fi
+
+# ── Purge data directory ───────────────────────────────────────────────────────
+if $PURGE_DATA; then
+  sep
+  info "Purging data directory ${DATA_DIR}..."
+  if [[ -d "$DATA_DIR" ]]; then
+    _size=$(du -sh "$DATA_DIR" 2>/dev/null | cut -f1 || echo "?")
+    sudo rm -rf "$DATA_DIR" \
+      && success "Deleted ${DATA_DIR}  (freed ~${_size})"
+  else
+    info "Data directory ${DATA_DIR} not found — nothing to delete."
+  fi
+fi
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+sep
+success "Olama stack has been uninstalled."
+echo
+
+if ! $PURGE_DATA && [[ -d "$DATA_DIR" ]]; then
+  echo -e "  ${YELLOW}Your data has been kept at: ${DATA_DIR}${NC}"
+  echo    "    ├── models/     — downloaded AI model weights"
+  echo    "    ├── webui/      — chat history, RAG documents, settings"
+  echo    "    ├── searxng/    — SearXNG config"
+  echo    "    └── pipelines/  — custom pipeline scripts"
+  echo
+  echo    "  To delete it:   sudo rm -rf ${DATA_DIR}"
+  echo    "  To reinstall:   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh)"
+  echo
+fi
+
+echo    "  Full uninstall log: ${LOG_FILE}"
+sep
