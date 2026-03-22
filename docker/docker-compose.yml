@@ -576,6 +576,58 @@ services:
       - olama_net
 
 # =============================================================================
+#  CATEGORY: INTERFACE — FILE CATALOG
+#  Purpose : Large-file browser for DATA_DIR.  Lists model weights, DBs, and
+#            other large files; lets you move them to a mounted external drive
+#            and automatically creates symlinks back so all paths keep working.
+#  Port    : 45217 → http://localhost:45217
+#  Mounts  : DATA_DIR → /data (read-write for move/restore)
+#             DRIVES_DIR (default /mnt) → /drives (external drive mount points)
+# =============================================================================
+
+  file-catalog:
+    build:
+      context: ./file-catalog
+      dockerfile: Dockerfile
+    image: olama-file-catalog:latest
+    container_name: olama-file-catalog
+    restart: unless-stopped
+
+    labels:
+      com.olama.category: "interface"
+      com.olama.description: "Large-file catalog — browse, move to external drive, symlink back"
+      com.olama.log: "${DATA_DIR:-/opt/olama}/logs/file-catalog.log"
+
+    ports:
+      - "${FILE_CATALOG_PORT:-45217}:8080"
+
+    environment:
+      - DATA_DIR=/data
+      - DRIVES_DIR=/drives
+      - MIN_SIZE_MB=${FILE_CATALOG_MIN_MB:-100}
+
+    volumes:
+      - ${DATA_DIR:-/opt/olama}:/data
+      - ${DRIVES_DIR:-/mnt}:/drives
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "file-catalog"
+
+    networks:
+      - olama_net
+
+# =============================================================================
 #  CATEGORY: INTERFACE — GHOST RUNNER
 #  Purpose : Background task generation with resume support.
 #            Submit a prompt; the server streams Ollama's response and saves
@@ -679,6 +731,7 @@ services:
       - MODEL_MANAGER_PORT=${MODEL_MANAGER_PORT:-45214}
       - GHOST_RUNNER_PORT=${GHOST_RUNNER_PORT:-45215}
       - MEMORY_PORT=${MEMORY_PORT:-45216}
+      - FILE_CATALOG_PORT=${FILE_CATALOG_PORT:-45217}
       - DOZZLE_PORT=${DOZZLE_PORT:-9999}
       - OLLAMA_PORT=${OLLAMA_PORT:-11434}
 

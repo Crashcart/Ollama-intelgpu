@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>File Catalog</title>
+<style>
+  :root {
+    --bg:      #0d1117;
+    --surface: #161b22;
+    --border:  #30363d;
+    --text:    #e6edf3;
+    --dim:     #7d8590;
+    --green:   #4ade80;
+    --yellow:  #facc15;
+    --red:     #f87171;
+    --blue:    #60a5fa;
+    --orange:  #fb923c;
+    --purple:  #c084fc;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .75rem 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+  .header h1 span { color: var(--dim); font-weight: 400; font-size: .85rem; margin-left: .5rem; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-items: center;
+    padding: .6rem 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .toolbar input[type=text] {
+    flex: 1;
+    min-width: 180px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: .4rem .7rem;
+    font-size: .85rem;
+    outline: none;
+  }
+  .toolbar input[type=text]:focus { border-color: var(--green); }
+
+  select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: .4rem .6rem;
+    font-size: .85rem;
+    cursor: pointer;
+  }
+  button {
+    background: #21262d;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: .4rem .8rem;
+    font-size: .85rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s;
+  }
+  button:hover { background: #2d333b; }
+  button.primary { background: #1a3a1a; border-color: var(--green); color: var(--green); }
+  button.primary:hover { background: #1f4a1f; }
+  button.danger  { background: #3a1a1a; border-color: var(--red);   color: var(--red); }
+  button.danger:hover  { background: #4a1f1f; }
+
+  .stats {
+    margin-left: auto;
+    color: var(--dim);
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+
+  /* ── Drive banner ── */
+  .drive-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    padding: .6rem 1rem;
+    background: #0d1117;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    min-height: 44px;
+  }
+  .drive-bar .drive-label { color: var(--dim); font-size: .82rem; white-space: nowrap; }
+  .drive-card {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: .3rem .7rem;
+    font-size: .82rem;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .drive-card.selected { border-color: var(--green); }
+  .drive-card .drive-name { font-weight: 600; color: var(--text); }
+  .drive-card .drive-free { color: var(--dim); }
+  .drive-meter {
+    width: 48px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .drive-meter-fill { height: 100%; background: var(--green); border-radius: 2px; }
+  .drive-meter-fill.warn { background: var(--yellow); }
+  .drive-meter-fill.full { background: var(--red); }
+  .no-drives { color: var(--dim); font-size: .82rem; font-style: italic; }
+
+  /* ── Table ── */
+  .table-wrap {
+    overflow-x: auto;
+    padding: 0 1rem 2rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: .75rem;
+  }
+  th {
+    text-align: left;
+    color: var(--dim);
+    font-size: .78rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: .4rem .6rem;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  th:hover { color: var(--text); }
+  th .sort-arrow { margin-left: .25rem; opacity: .4; }
+  th.active .sort-arrow { opacity: 1; color: var(--green); }
+  td {
+    padding: .45rem .6rem;
+    border-bottom: 1px solid #21262d;
+    vertical-align: middle;
+    max-width: 0;
+  }
+  tr:hover td { background: #161b22; }
+
+  .col-path  { width: 99%; }
+  .col-size  { white-space: nowrap; text-align: right; }
+  .col-ext   { white-space: nowrap; }
+  .col-state { white-space: nowrap; }
+  .col-act   { white-space: nowrap; text-align: right; }
+
+  .path-cell {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: .8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .path-dir  { color: var(--dim); }
+  .path-name { color: var(--text); }
+
+  .symlink-target {
+    font-family: monospace;
+    font-size: .75rem;
+    color: var(--dim);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 400px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    font-size: .75rem;
+    padding: .15rem .45rem;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .badge.local   { background: rgba(96,165,250,.12); color: var(--blue);   border: 1px solid rgba(96,165,250,.25); }
+  .badge.on-drive{ background: rgba(74,222,128,.12); color: var(--green);  border: 1px solid rgba(74,222,128,.25); }
+  .badge.broken  { background: rgba(248,113,113,.12);color: var(--red);    border: 1px solid rgba(248,113,113,.25); }
+
+  .ext-badge {
+    font-size: .72rem;
+    font-family: monospace;
+    padding: .1rem .35rem;
+    border-radius: 3px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--dim);
+  }
+  .ext-badge.model { color: var(--purple); border-color: rgba(192,132,252,.3); }
+  .ext-badge.db    { color: var(--orange); border-color: rgba(251,146,60,.3); }
+  .ext-badge.arch  { color: var(--yellow); border-color: rgba(250,204,21,.3); }
+
+  .act-btn {
+    font-size: .78rem;
+    padding: .25rem .55rem;
+    border-radius: 5px;
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--dim);
+    padding: 3rem 1rem;
+    font-style: italic;
+  }
+
+  /* ── Loading spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .7rem 1rem;
+    font-size: .85rem;
+    max-width: 360px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
+    pointer-events: none;
+    z-index: 100;
+  }
+  #toast.show { opacity: 1; transform: none; }
+  #toast.ok   { border-color: var(--green); color: var(--green); }
+  #toast.err  { border-color: var(--red);   color: var(--red);   }
+
+  /* ── Move modal ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    z-index: 50;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    max-width: 480px;
+    width: 90%;
+  }
+  .modal h2 { font-size: 1rem; margin-bottom: 1rem; }
+  .modal .file-info {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: .6rem .8rem;
+    font-family: monospace;
+    font-size: .8rem;
+    margin-bottom: 1rem;
+    word-break: break-all;
+  }
+  .modal label { display: block; color: var(--dim); font-size: .82rem; margin-bottom: .4rem; }
+  .modal select { width: 100%; margin-bottom: 1rem; }
+  .modal .modal-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/>
+    <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+  </svg>
+  <h1>File Catalog <span id="data-dir-label"></span></h1>
+  <button onclick="load()" id="scan-btn">&#8635; Scan</button>
+</div>
+
+<div class="drive-bar" id="drive-bar">
+  <span class="drive-label">External drives:</span>
+  <span class="no-drives">Loading…</span>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="search" placeholder="Filter files…" oninput="render()">
+  <select id="filter-state" onchange="render()">
+    <option value="all">All files</option>
+    <option value="local">Local only</option>
+    <option value="drive">On drive only</option>
+  </select>
+  <select id="sort-col" onchange="render()">
+    <option value="size_b">Sort: Size</option>
+    <option value="path">Sort: Path</option>
+    <option value="ext">Sort: Type</option>
+    <option value="mtime">Sort: Modified</option>
+  </select>
+  <span class="stats" id="stats"></span>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="col-path" onclick="setSort('path')">
+          Path <span class="sort-arrow" id="arr-path"></span>
+        </th>
+        <th class="col-size" onclick="setSort('size_b')">
+          Size <span class="sort-arrow" id="arr-size_b"></span>
+        </th>
+        <th class="col-ext"  onclick="setSort('ext')">
+          Type <span class="sort-arrow" id="arr-ext"></span>
+        </th>
+        <th class="col-state">Status</th>
+        <th class="col-act">Action</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<!-- Move modal -->
+<div class="modal-overlay" id="move-modal">
+  <div class="modal">
+    <h2>Move to external drive</h2>
+    <div class="file-info" id="modal-file"></div>
+    <label>Destination drive</label>
+    <select id="modal-drive"></select>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="confirmMove()">Move &amp; symlink</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let files  = [];
+let drives = [];
+let sortCol = 'size_b';
+let sortAsc = false;
+let pendingMove = null;
+
+const EXT_CLASS = {
+  '.gguf':'.model','.bin':'.model','.safetensors':'.model','.pt':'.model','.pth':'.model','.onnx':'.model',
+  '.db':'.db','.sqlite':'.db','.sqlite3':'.db',
+  '.tar':'.arch','.gz':'.arch','.zip':'.arch','.zst':'.arch','.7z':'.arch','.iso':'.arch','.img':'.arch',
+};
+
+async function load() {
+  document.getElementById('scan-btn').innerHTML = '<span class="spinner"></span>';
+  try {
+    const [fr, dr] = await Promise.all([
+      fetch('/api/files').then(r => r.json()),
+      fetch('/api/drives').then(r => r.json()),
+    ]);
+    files  = fr.files  || [];
+    drives = dr.drives || [];
+    document.getElementById('data-dir-label').textContent = fr.data_dir || '';
+    renderDrives();
+    render();
+  } catch(e) {
+    toast('Scan failed: ' + e.message, 'err');
+  } finally {
+    document.getElementById('scan-btn').textContent = '↺ Scan';
+  }
+}
+
+function renderDrives() {
+  const bar = document.getElementById('drive-bar');
+  if (drives.length === 0) {
+    bar.innerHTML = '<span class="drive-label">External drives:</span>' +
+      '<span class="no-drives">No drives found under ' +
+      (document.getElementById('data-dir-label').textContent || '/drives') + '</span>';
+    return;
+  }
+  let html = '<span class="drive-label">External drives:</span>';
+  for (const d of drives) {
+    const pct = d.total_b > 0 ? (d.used_b / d.total_b * 100) : 0;
+    const cls = pct > 90 ? 'full' : pct > 70 ? 'warn' : '';
+    html += `<div class="drive-card" data-name="${esc(d.name)}" onclick="toggleDrive(this)">
+      <div class="drive-meter"><div class="drive-meter-fill ${cls}" style="width:${pct.toFixed(0)}%"></div></div>
+      <span class="drive-name">${esc(d.name)}</span>
+      <span class="drive-free">${esc(d.free_human)} free</span>
+    </div>`;
+  }
+  bar.innerHTML = html;
+}
+
+function toggleDrive(el) {
+  el.classList.toggle('selected');
+}
+
+function selectedDrive() {
+  const sel = document.querySelector('.drive-card.selected');
+  return sel ? sel.dataset.name : null;
+}
+
+function setSort(col) {
+  if (sortCol === col) sortAsc = !sortAsc;
+  else { sortCol = col; sortAsc = col === 'path' || col === 'ext'; }
+  document.getElementById('sort-col').value = col;
+  render();
+}
+
+function render() {
+  const q     = document.getElementById('search').value.toLowerCase();
+  const filt  = document.getElementById('filter-state').value;
+  const sCol  = document.getElementById('sort-col').value;
+  if (sCol !== sortCol) { sortCol = sCol; }
+
+  // Update sort arrows
+  for (const c of ['path','size_b','ext','mtime']) {
+    const el = document.getElementById('arr-' + c);
+    if (!el) continue;
+    el.parentElement.classList.toggle('active', c === sortCol);
+    el.textContent = c === sortCol ? (sortAsc ? '▲' : '▼') : '';
+  }
+
+  let rows = files.filter(f => {
+    if (q && !f.path.toLowerCase().includes(q)) return false;
+    if (filt === 'local' && f.on_drive) return false;
+    if (filt === 'drive' && !f.on_drive) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    const r = va < vb ? -1 : va > vb ? 1 : 0;
+    return sortAsc ? r : -r;
+  });
+
+  const totalSize = rows.reduce((s, f) => s + f.size_b, 0);
+  document.getElementById('stats').textContent =
+    `${rows.length} file${rows.length !== 1 ? 's' : ''} · ${humanSize(totalSize)}`;
+
+  const tbody = document.getElementById('tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty">No files match.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(f => {
+    const parts = f.path.split('/');
+    const name  = parts.pop();
+    const dir   = parts.length ? parts.join('/') + '/' : '';
+    const extCls = (EXT_CLASS[f.ext] || '').replace('.', '');
+
+    let statusBadge;
+    if (f.on_drive) {
+      statusBadge = `<span class="badge on-drive">⇒ drive</span>`;
+    } else if (f.is_symlink) {
+      statusBadge = `<span class="badge broken">⚠ symlink</span>`;
+    } else {
+      statusBadge = `<span class="badge local">local</span>`;
+    }
+
+    let actionBtn;
+    if (f.on_drive) {
+      actionBtn = `<button class="act-btn danger" onclick="restoreFile(${JSON.stringify(f.path)})">Restore</button>`;
+    } else if (!f.is_symlink) {
+      actionBtn = `<button class="act-btn primary" onclick="openMoveModal(${JSON.stringify(f.path)}, ${JSON.stringify(f.size_human)})">Move…</button>`;
+    } else {
+      actionBtn = '';
+    }
+
+    const linkLine = f.link_target
+      ? `<span class="symlink-target" title="${esc(f.link_target)}">→ ${esc(f.link_target)}</span>`
+      : '';
+
+    return `<tr>
+      <td class="col-path path-cell">
+        <span class="path-dir">${esc(dir)}</span><span class="path-name">${esc(name)}</span>
+        ${linkLine}
+      </td>
+      <td class="col-size">${esc(f.size_human)}</td>
+      <td class="col-ext"><span class="ext-badge ${extCls}">${esc(f.ext || '—')}</span></td>
+      <td class="col-state">${statusBadge}</td>
+      <td class="col-act">${actionBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+function openMoveModal(path, sizeHuman) {
+  pendingMove = path;
+  document.getElementById('modal-file').textContent = path + '  (' + sizeHuman + ')';
+  const sel = document.getElementById('modal-drive');
+  sel.innerHTML = drives.map(d =>
+    `<option value="${esc(d.name)}">${esc(d.name)}  —  ${esc(d.free_human)} free</option>`
+  ).join('');
+
+  // Pre-select the highlighted drive card if any
+  const sd = selectedDrive();
+  if (sd) sel.value = sd;
+
+  document.getElementById('move-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('move-modal').classList.remove('open');
+  pendingMove = null;
+}
+
+async function confirmMove() {
+  const drive = document.getElementById('modal-drive').value;
+  if (!drive || !pendingMove) return;
+  closeModal();
+  try {
+    const r = await fetch('/api/file/move', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path: pendingMove, drive }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    toast('Moved & symlinked: ' + pendingMove, 'ok');
+    await load();
+  } catch(e) {
+    toast('Move failed: ' + e.message, 'err');
+  }
+}
+
+async function restoreFile(path) {
+  if (!confirm(`Restore "${path}" from drive back to local storage?`)) return;
+  try {
+    const r = await fetch('/api/file/restore', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    toast('Restored: ' + path, 'ok');
+    await load();
+  } catch(e) {
+    toast('Restore failed: ' + e.message, 'err');
+  }
+}
+
+let _toastTimer;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + (type || '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 4000);
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function humanSize(b) {
+  const units = ['B','KB','MB','GB','TB'];
+  let i = 0;
+  while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+  return b.toFixed(1) + ' ' + units[i];
+}
+
+// Close modal on overlay click
+document.getElementById('move-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+load();
+</script>
+</body>
+</html>
