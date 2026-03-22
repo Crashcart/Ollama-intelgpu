@@ -304,18 +304,19 @@ docker exec olama ollama run mistral "hello"
 The **portal** at `http://localhost:45200` is a lightweight nginx container that wraps all three web interfaces into a single browser tab.
 
 ```
-┌─────────────────────────────────────────────┐
-│  Olama Stack  [ Chat ]  [ Models ]  [ Logs ] │  ← 48 px dark nav bar
-├─────────────────────────────────────────────┤
-│                                             │
-│   Active service displayed here via iframe  │
-│                                             │
-└─────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│  Olama Stack  [ Chat ]  [ Models ]  [ Logs ]  [⚠ Crit Issues] │  ← 48 px dark nav bar
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│   Active service displayed here via iframe                    │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 - **Chat** — Open WebUI (port 45213)
 - **Models** — Model Manager (port 45214)
 - **Logs** — Dozzle real-time log viewer (port 9999)
+- **Crit Issues** *(red, pulsing — only appears when a service is down)* — Service Health panel
 
 **State is preserved** — switching tabs does not reload the iframe, so your open chat conversation and scroll position survive.
 
@@ -324,6 +325,18 @@ The **portal** at `http://localhost:45200` is a lightweight nginx container that
 **Status badge** — the top-right corner shows the number of installed models and whether the stack is healthy, polled every 30 seconds.
 
 **Works on any hostname** — the portal resolves service URLs from `window.location.hostname`, so `localhost`, a LAN IP, and a hostname like `boris.local` all work without reconfiguration.
+
+### Service Health panel
+
+When any service stops responding the portal adds a red **Crit Issues** button to the nav bar (pulsing until resolved). Clicking it opens the Service Health panel:
+
+- **Per-service rows** — coloured dot (green/red/yellow), status text, latency, and the URL that was checked shown as a dim sub-line beneath each service.
+- **Error detail** — when a service is down, the exact error type and message appear inline (e.g. `ConnectError`, `HTTP 502`, timeout duration).
+- **Event log** — a scrollable, timestamped history of every health check run (last 80 entries). Entries are colour-coded: green = ok, red = error, yellow = warning, dim = informational. A **Clear** button wipes the log. Newest entries appear at the top.
+- **Copy diagnostic** — generates a plain-text report containing each service's status, URL, latency, and error details, plus the full event log. Copies to clipboard silently on HTTPS; on plain HTTP a modal appears with the text pre-selected so you can hit Ctrl+C.
+- **Refresh now** — re-runs all checks immediately without waiting for the 60-second polling interval.
+
+The panel auto-navigates back to Chat once all services recover.
 
 ---
 

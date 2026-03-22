@@ -348,6 +348,127 @@
     }
     .copy-btn:hover { color: var(--text); background: rgba(255,255,255,.05); }
     .copy-btn.copied { color: var(--green); border-color: rgba(74,222,128,.3); }
+
+    /* ── Service URL sub-line ──────────────────────────────────── */
+    .svc-url {
+      font-size: .68rem;
+      color: var(--dim);
+      opacity: .65;
+      font-family: monospace;
+    }
+
+    /* ── Event log ──────────────────────────────────────────────── */
+    .log-section { margin-top: 1rem; }
+    .log-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .35rem .9rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px 8px 0 0;
+    }
+    .log-hdr-label {
+      font-size: .7rem;
+      font-weight: 600;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .log-clear {
+      background: none;
+      border: none;
+      color: var(--dim);
+      font-size: .7rem;
+      cursor: pointer;
+      padding: .1rem .35rem;
+      border-radius: 3px;
+      line-height: 1;
+    }
+    .log-clear:hover { color: var(--text); background: rgba(255,255,255,.06); }
+    .log-body {
+      background: #080b08;
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      max-height: 190px;
+      overflow-y: auto;
+      padding: .3rem 0;
+    }
+    .log-row {
+      display: flex;
+      gap: .7rem;
+      padding: .06rem .9rem;
+      line-height: 1.65;
+    }
+    .log-row:hover { background: rgba(255,255,255,.025); }
+    .log-ts  { font-family: monospace; font-size: .69rem; color: var(--dim); flex-shrink: 0; user-select: none; }
+    .log-msg { font-family: monospace; font-size: .69rem; color: var(--text); flex: 1; word-break: break-all; }
+    .log-msg.ok   { color: var(--green); }
+    .log-msg.err  { color: var(--red); }
+    .log-msg.warn { color: var(--yellow); }
+    .log-msg.dim  { color: var(--dim); }
+    .log-empty { font-family: monospace; font-size: .69rem; color: var(--dim); padding: .4rem .9rem; display: block; }
+
+    /* ── Copy fallback modal ───────────────────────────────────── */
+    .copy-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.72);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .copy-modal.open { display: flex; }
+    .copy-modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem;
+      width: min(580px, calc(100vw - 2rem));
+      display: flex;
+      flex-direction: column;
+      gap: .7rem;
+    }
+    .copy-modal-title { font-size: .88rem; font-weight: 600; color: var(--text); }
+    .copy-modal-hint  { font-size: .73rem; color: var(--dim); line-height: 1.6; }
+    .copy-modal-ta {
+      width: 100%;
+      height: 210px;
+      background: #080b08;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: .7rem;
+      padding: .55rem .7rem;
+      resize: vertical;
+      outline: none;
+    }
+    .copy-modal-ta:focus { border-color: var(--accent-bdr); }
+    .copy-modal-foot { display: flex; gap: .5rem; justify-content: flex-end; }
+    .copy-modal-close {
+      padding: .38rem .85rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--dim);
+      font-size: .77rem;
+      cursor: pointer;
+    }
+    .copy-modal-close:hover { color: var(--text); background: rgba(255,255,255,.05); }
+    .copy-modal-sel {
+      padding: .38rem .9rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent-bdr);
+      background: var(--accent-bg);
+      color: var(--accent);
+      font-size: .77rem;
+      cursor: pointer;
+    }
+    .copy-modal-sel:hover  { background: rgba(74,222,128,.2); }
+    .copy-modal-sel.copied { color: var(--green); border-color: rgba(74,222,128,.6); }
   </style>
 </head>
 <body>
@@ -466,12 +587,41 @@
         <button class="refresh-btn" onclick="runHealthCheck()">Refresh now</button>
         <button class="copy-btn" id="copy-btn" onclick="copyDiagnostic()">Copy diagnostic</button>
       </div>
+
+      <!-- Event log -->
+      <div class="log-section">
+        <div class="log-hdr">
+          <span class="log-hdr-label">Event Log</span>
+          <button class="log-clear" onclick="clearLog()">Clear</button>
+        </div>
+        <div class="log-body" id="log-body">
+          <span class="log-empty">No events yet.</span>
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="loader" id="loader">
     <div class="spinner"></div>
     <span id="loader-msg">Loading&hellip;</span>
+  </div>
+</div>
+
+<!-- Copy fallback modal -->
+<div class="copy-modal" id="copy-modal" onclick="if(event.target===this)closeCopyModal()">
+  <div class="copy-modal-box">
+    <div class="copy-modal-title">Diagnostic Report</div>
+    <div class="copy-modal-hint">
+      Clipboard API requires HTTPS &mdash; unavailable on plain HTTP.<br>
+      Click <strong style="color:var(--text)">Select&nbsp;All</strong> below, or click in the box and press
+      <kbd style="font-family:monospace;background:var(--border);padding:.1rem .3rem;border-radius:3px">Ctrl+A</kbd>
+      then <kbd style="font-family:monospace;background:var(--border);padding:.1rem .3rem;border-radius:3px">Ctrl+C</kbd>.
+    </div>
+    <textarea class="copy-modal-ta" id="copy-modal-ta" readonly spellcheck="false"></textarea>
+    <div class="copy-modal-foot">
+      <button class="copy-modal-close" onclick="closeCopyModal()">Close</button>
+      <button class="copy-modal-sel" id="copy-modal-sel" onclick="selectAllInModal()">Select All</button>
+    </div>
   </div>
 </div>
 
@@ -599,21 +749,80 @@ const SERVICES = [
 
 let lastCheckResults = {};
 
+/* ── Event log ──────────────────────────────────────────────── */
+const logEvents = [];
+const MAX_LOG = 80;
+
+function ts() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+function addLog(msg, level = '') {
+  logEvents.push({ t: ts(), msg, level });
+  if (logEvents.length > MAX_LOG) logEvents.shift();
+  renderLog();
+}
+
+function renderLog() {
+  const body = document.getElementById('log-body');
+  if (!body) return;
+  if (logEvents.length === 0) {
+    body.innerHTML = '<span class="log-empty">No events yet.</span>';
+    return;
+  }
+  body.innerHTML = logEvents.slice().reverse().map(e =>
+    `<div class="log-row"><span class="log-ts">${e.t}</span><span class="log-msg ${e.level}">${e.msg}</span></div>`
+  ).join('');
+}
+
+function clearLog() { logEvents.length = 0; renderLog(); }
+
+/* ── Copy modal ──────────────────────────────────────────────── */
+function showCopyModal(text) {
+  const ta  = document.getElementById('copy-modal-ta');
+  const sel = document.getElementById('copy-modal-sel');
+  ta.value = text;
+  sel.textContent = 'Select All';
+  sel.classList.remove('copied');
+  document.getElementById('copy-modal').classList.add('open');
+  setTimeout(() => { ta.focus(); ta.select(); }, 60);
+}
+
+function closeCopyModal() {
+  document.getElementById('copy-modal').classList.remove('open');
+}
+
+function selectAllInModal() {
+  const ta  = document.getElementById('copy-modal-ta');
+  const sel = document.getElementById('copy-modal-sel');
+  ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch {}
+  if (ok) {
+    sel.textContent = 'Copied!';
+    sel.classList.add('copied');
+    setTimeout(() => { sel.textContent = 'Select All'; sel.classList.remove('copied'); }, 2000);
+  }
+}
+
 // Browser-side: no-cors fetch (opaque success = up, throw = down)
 async function checkNoCors(svc) {
   const url = `${proto}//${host}:${svc.port}/`;
   const t0 = Date.now();
   try {
     await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(6000) });
-    return { state: 'ok', detail: `Responding \u00b7 ${Date.now() - t0} ms` };
+    const latency = Date.now() - t0;
+    return { state: 'ok', detail: `Responding \u00b7 ${latency} ms`, url, latency_ms: latency };
   } catch (e) {
     const latency = Date.now() - t0;
     const isTimeout = e.name === 'TimeoutError' || e.name === 'AbortError';
     return {
       state: 'err',
+      url,
+      latency_ms: latency,
       detail: isTimeout ? `Timed out (${latency} ms)` : 'Connection refused',
       diagnostic: `URL: ${url}\nError: ${e.name}: ${e.message}`,
-      latency_ms: latency,
     };
   }
 }
@@ -623,22 +832,24 @@ function parseServerEntry(d) {
   if (!d) return { state: 'err', detail: 'No data' };
   if (d.ok) {
     const v = d.version ? `v${d.version} \u00b7 ` : '';
-    return { state: 'ok', detail: `${v}${d.latency_ms} ms`, latency_ms: d.latency_ms };
+    return { state: 'ok', detail: `${v}${d.latency_ms} ms`, url: d.url, latency_ms: d.latency_ms };
   }
   return {
     state: 'err',
+    url: d.url,
+    latency_ms: d.latency_ms,
     detail: d.error_type || 'Not reachable',
     diagnostic: [
-      `URL checked: ${d.url}`,
-      `Error type:  ${d.error_type}`,
-      `Error:       ${d.error}`,
-      `Latency:     ${d.latency_ms} ms`,
+      `URL:     ${d.url}`,
+      `Type:    ${d.error_type}`,
+      `Error:   ${d.error}`,
+      `Latency: ${d.latency_ms} ms`,
     ].join('\n'),
-    latency_ms: d.latency_ms,
   };
 }
 
 async function runHealthCheck() {
+  addLog('Health check started', 'dim');
   renderRows(SERVICES.map(s => ({ ...s, state: 'checking', detail: '' })));
   document.getElementById('issues-summary').className = 'issues-summary checking';
   document.getElementById('issues-summary').textContent = 'Checking\u2026';
@@ -675,16 +886,36 @@ async function runHealthCheck() {
   noCorsServices.forEach((svc, i) => { resultMap[svc.id] = noCorsResults[i]; });
 
   SERVICES.forEach(svc => { lastCheckResults[svc.id] = resultMap[svc.id]; });
+
+  // Log each service result
+  if (serverData._err) {
+    addLog(`Model Manager unreachable \u00b7 ${serverData._err}`, 'err');
+  }
+  for (const svc of SERVICES) {
+    const r = resultMap[svc.id];
+    if (!r) continue;
+    const lat = r.latency_ms != null ? ` \u00b7 ${r.latency_ms}ms` : '';
+    const urlPart = r.url ? ` \u00b7 ${r.url}` : '';
+    if (r.state === 'ok') {
+      addLog(`${svc.name}: ${r.detail}${urlPart}`, 'ok');
+    } else {
+      addLog(`${svc.name}: ${r.detail}${lat}${urlPart}`, 'err');
+    }
+  }
+
   renderRows(SERVICES.map(svc => ({ ...svc, ...(resultMap[svc.id] || {}) })));
 
   const anyErr = SERVICES.some(svc => resultMap[svc.id]?.state === 'err');
   const sum = document.getElementById('issues-summary');
   if (anyErr) {
+    const n = SERVICES.filter(s => resultMap[s.id]?.state === 'err').length;
     sum.className = 'issues-summary err';
     sum.textContent = 'One or more services are not responding.';
+    addLog(`${n} service${n > 1 ? 's' : ''} in error`, 'warn');
   } else {
     sum.className = 'issues-summary ok';
     sum.textContent = 'All systems nominal.';
+    addLog('All systems nominal', 'dim');
   }
 
   // Show/hide the Issues button based on whether errors exist
@@ -712,11 +943,14 @@ function renderRows(rows) {
     const sub = s.state === 'err' && s.diagnostic
       ? `<span class="svc-detail-sub">${esc(s.diagnostic).replace(/\n/g, '<br>')}</span>`
       : '';
+    const urlLine = s.url && s.state !== 'checking'
+      ? `<span class="svc-url">${esc(s.url)}</span>`
+      : '';
     return `
     <div class="svc-row">
       <span class="svc-dot ${s.state || 'checking'}"></span>
       <span class="svc-name">${esc(s.name)}</span>
-      <span class="svc-detail"><span>${esc(s.detail || '')}</span>${sub}</span>
+      <span class="svc-detail"><span>${esc(s.detail || '')}</span>${urlLine}${sub}</span>
       ${s.port ? `<span class="svc-port">:${s.port}</span>` : ''}
     </div>`;
   }).join('');
@@ -724,7 +958,7 @@ function renderRows(rows) {
 
 async function copyDiagnostic() {
   const lines = [
-    'Olama Stack — Diagnostic Report',
+    'Olama Stack \u2014 Diagnostic Report',
     `Generated : ${new Date().toISOString()}`,
     `Portal URL: ${window.location.href}`,
     `User-Agent: ${navigator.userAgent}`,
@@ -734,30 +968,35 @@ async function copyDiagnostic() {
     const res = lastCheckResults[svc.id];
     if (!res) continue;
     lines.push(`[${svc.name}]`);
-    lines.push(`  Status : ${res.state}`);
-    lines.push(`  Detail : ${res.detail || '—'}`);
-    if (res.latency_ms != null) lines.push(`  Latency: ${res.latency_ms} ms`);
+    lines.push(`  Status  : ${res.state}`);
+    lines.push(`  Detail  : ${res.detail || '\u2014'}`);
+    if (res.url)             lines.push(`  URL     : ${res.url}`);
+    if (res.latency_ms != null) lines.push(`  Latency : ${res.latency_ms} ms`);
     if (res.diagnostic) {
       for (const l of res.diagnostic.split('\n')) lines.push(`  ${l}`);
     }
+    lines.push('');
+  }
+  if (logEvents.length) {
+    lines.push('\u2500\u2500 Event Log \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500');
+    for (const e of logEvents) lines.push(`${e.t}  ${e.msg}`);
     lines.push('');
   }
   const text = lines.join('\n');
   let ok = false;
 
   // Primary: Clipboard API (requires HTTPS or localhost)
-  if (navigator.clipboard) {
+  if (navigator.clipboard?.writeText) {
     try { await navigator.clipboard.writeText(text); ok = true; } catch {}
   }
 
-  // Fallback: execCommand (works on plain HTTP)
+  // Fallback: execCommand
   if (!ok) {
     const ta = document.createElement('textarea');
     ta.value = text;
-    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none';
     document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
+    ta.focus(); ta.select();
     try { ok = document.execCommand('copy'); } catch {}
     document.body.removeChild(ta);
   }
@@ -768,8 +1007,8 @@ async function copyDiagnostic() {
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'Copy diagnostic'; btn.classList.remove('copied'); }, 2000);
   } else {
-    // Last resort: show in a prompt so user can manually copy
-    prompt('Copy the diagnostic report below:', text);
+    // Show modal so user can select and copy manually
+    showCopyModal(text);
   }
 }
 
