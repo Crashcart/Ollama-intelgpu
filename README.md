@@ -421,6 +421,18 @@ bash scripts/logs.sh debug-off
 
 Open **http://localhost:9999** for the Dozzle web log viewer — real-time, color-coded, no CLI needed.
 
+**Dozzle log level** — the `DOZZLE_LEVEL` variable controls what the browser UI shows:
+
+| Value | What is shown |
+|---|---|
+| `info` *(default)* | All messages including normal startup/operational output |
+| `warn` | Warnings and above — quieter, hides routine INFO noise |
+| `error` | Errors and critical only — very quiet |
+
+Set in `docker/.env` and restart: `docker compose up -d dozzle`
+
+> `bash scripts/logs.sh tail` always shows **all** log levels regardless of `DOZZLE_LEVEL` — useful when you want full output without reconfiguring Dozzle.
+
 ---
 
 ## Intel GPU Verification

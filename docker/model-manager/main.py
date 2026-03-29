@@ -11,7 +11,9 @@ Routes:
   GET  /                     → static HTML UI
 """
 
+import json
 import os
+from pathlib import Path
 from typing import AsyncGenerator
 
 import httpx
@@ -53,144 +55,12 @@ def _make_ollama_client(**kwargs) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=OLLAMA_URL, **kwargs)
 
 # ---------------------------------------------------------------------------
-# Model catalog — curated list of popular Ollama models
+# Model catalog — loaded from models.json at startup.
+# To add or update models, edit models.json — no Python knowledge or image
+# rebuild required.  The file is located next to this script.
 # ---------------------------------------------------------------------------
-CATALOG = [
-    # ── Text / general ───────────────────────────────────────────────────────
-    {
-        "id": "smollm2:135m",       "name": "SmolLM2 135M",       "size_mb":    91,
-        "desc": "Hugging Face's ultra-tiny model. Runs on anything.",
-        "tags": ["text", "fast"],
-    },
-    {
-        "id": "qwen2.5:0.5b",       "name": "Qwen 2.5 0.5B",      "size_mb":   395,
-        "desc": "Alibaba Qwen 2.5 0.5B — surprisingly capable at this size.",
-        "tags": ["text", "fast"],
-    },
-    {
-        "id": "llama3.2:1b",        "name": "Llama 3.2 1B",        "size_mb":   770,
-        "desc": "Meta's smallest Llama. Great for simple Q&A and quick replies.",
-        "tags": ["text", "fast"],
-    },
-    {
-        "id": "gemma3:1b",          "name": "Gemma 3 1B",          "size_mb":   815,
-        "desc": "Google Gemma 3 1B — tiny but well-trained.",
-        "tags": ["text", "fast"],
-    },
-    {
-        "id": "llama3.2:3b",        "name": "Llama 3.2 3B",        "size_mb":  2000,
-        "desc": "Meta Llama 3.2 3B — solid balance of speed and quality.",
-        "tags": ["text"],
-    },
-    {
-        "id": "phi3:mini",          "name": "Phi-3 Mini",          "size_mb":  2300,
-        "desc": "Microsoft Phi-3 mini 3.8B — punches above its weight class.",
-        "tags": ["text"],
-    },
-    {
-        "id": "phi4-mini",          "name": "Phi-4 Mini",          "size_mb":  3800,
-        "desc": "Microsoft Phi-4 mini — latest generation, very capable.",
-        "tags": ["text"],
-    },
-    {
-        "id": "gemma3:4b",          "name": "Gemma 3 4B",          "size_mb":  3300,
-        "desc": "Google Gemma 3 4B — strong instruction following.",
-        "tags": ["text"],
-    },
-    {
-        "id": "mistral",            "name": "Mistral 7B",          "size_mb":  4100,
-        "desc": "Well-rounded general model. A great default first choice.",
-        "tags": ["text"],
-    },
-    {
-        "id": "llama3.1:8b",        "name": "Llama 3.1 8B",        "size_mb":  4700,
-        "desc": "Meta Llama 3.1 8B — high quality for everyday tasks.",
-        "tags": ["text"],
-    },
-    {
-        "id": "qwen2.5:7b",         "name": "Qwen 2.5 7B",         "size_mb":  4700,
-        "desc": "Alibaba Qwen 2.5 7B — strong multilingual and reasoning.",
-        "tags": ["text"],
-    },
-    {
-        "id": "mistral-nemo",       "name": "Mistral Nemo 12B",    "size_mb":  7100,
-        "desc": "Mistral Nemo 12B — improved context length and quality.",
-        "tags": ["text"],
-    },
-    {
-        "id": "gemma3:12b",         "name": "Gemma 3 12B",         "size_mb":  8100,
-        "desc": "Google Gemma 3 12B — high quality, fits on most GPUs.",
-        "tags": ["text"],
-    },
-    {
-        "id": "qwen2.5:14b",        "name": "Qwen 2.5 14B",        "size_mb":  9000,
-        "desc": "Alibaba Qwen 2.5 14B — excellent reasoning and long context.",
-        "tags": ["text"],
-    },
-    {
-        "id": "llama3.1:70b",       "name": "Llama 3.1 70B",       "size_mb": 40000,
-        "desc": "Meta Llama 3.1 70B — top tier quality. Needs ~40 GB VRAM.",
-        "tags": ["text", "large"],
-    },
-    # ── Code ─────────────────────────────────────────────────────────────────
-    {
-        "id": "starcoder2:3b",      "name": "StarCoder2 3B",       "size_mb":  1700,
-        "desc": "BigCode StarCoder2 3B — efficient, fast code completions.",
-        "tags": ["code", "fast"],
-    },
-    {
-        "id": "codellama:7b",       "name": "CodeLlama 7B",        "size_mb":  3800,
-        "desc": "Meta CodeLlama 7B — code generation, completion, explanation.",
-        "tags": ["code"],
-    },
-    {
-        "id": "deepseek-coder:6.7b","name": "DeepSeek Coder 6.7B", "size_mb":  3800,
-        "desc": "DeepSeek Coder — top-tier code generation at 6.7B.",
-        "tags": ["code"],
-    },
-    {
-        "id": "qwen2.5-coder:7b",   "name": "Qwen 2.5 Coder 7B",  "size_mb":  4700,
-        "desc": "Alibaba Qwen Coder 7B — excellent code assistant.",
-        "tags": ["code"],
-    },
-    {
-        "id": "codellama:13b",      "name": "CodeLlama 13B",       "size_mb":  7400,
-        "desc": "Meta CodeLlama 13B — higher quality, larger context.",
-        "tags": ["code"],
-    },
-    # ── Vision ───────────────────────────────────────────────────────────────
-    {
-        "id": "moondream",          "name": "Moondream",           "size_mb":   829,
-        "desc": "Tiny vision model — image Q&A in under 1 GB.",
-        "tags": ["vision", "fast"],
-    },
-    {
-        "id": "llava:7b",           "name": "LLaVA 7B",            "size_mb":  4700,
-        "desc": "LLaVA 7B — understands and reasons about images.",
-        "tags": ["vision"],
-    },
-    {
-        "id": "llava:13b",          "name": "LLaVA 13B",           "size_mb":  8000,
-        "desc": "LLaVA 13B — higher quality image understanding.",
-        "tags": ["vision"],
-    },
-    {
-        "id": "minicpm-v:8b",       "name": "MiniCPM-V 8B",        "size_mb":  5500,
-        "desc": "MiniCPM Vision 8B — strong at charts, documents, screenshots.",
-        "tags": ["vision"],
-    },
-    # ── Embedding (RAG) ──────────────────────────────────────────────────────
-    {
-        "id": "nomic-embed-text",   "name": "Nomic Embed Text",    "size_mb":   274,
-        "desc": "Text embedding model used by Open WebUI's RAG feature.",
-        "tags": ["embedding", "fast"],
-    },
-    {
-        "id": "mxbai-embed-large",  "name": "MXBai Embed Large",   "size_mb":   670,
-        "desc": "High-quality text embeddings for RAG and semantic search.",
-        "tags": ["embedding"],
-    },
-]
+_CATALOG_PATH = Path(__file__).parent / "models.json"
+CATALOG: list[dict] = json.loads(_CATALOG_PATH.read_text())
 
 
 # ---------------------------------------------------------------------------
