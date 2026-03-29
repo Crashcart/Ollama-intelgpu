@@ -357,17 +357,37 @@ ${DATA_DIR}/
 └── logs/          ← Log files exported by scripts/logs.sh
 ```
 
-**Backup:**
+**Backup (safe — stop first):**
+
+Open WebUI stores its chat history and user accounts in a SQLite database (`${DATA_DIR}/webui/webui.db`) and vector embeddings in ChromaDB (`${DATA_DIR}/webui/chroma.sqlite3`). Copying these files while the containers are running can produce a corrupt backup. Stop the stack first:
 
 ```bash
+# Stop the stack, copy everything, restart
+cd /opt/ollama-stack/docker
+docker compose down
 rsync -av --progress ${DATA_DIR}/ /mnt/backup/ollama/
+docker compose up -d
 ```
+
+For a live (running-stack) snapshot you can use SQLite's backup command directly:
+
+```bash
+# Safe live backup of just the chat database
+docker exec ollama-open-webui sqlite3 /app/backend/data/webui.db ".backup /app/backend/data/webui.db.bak"
+cp ${DATA_DIR}/webui/webui.db.bak /mnt/backup/ollama/webui.db
+```
+
+**Restore:**
+
+1. Stop the stack: `cd /opt/ollama-stack/docker && docker compose down`
+2. Copy the backup to `DATA_DIR`: `rsync -av /mnt/backup/ollama/ ${DATA_DIR}/`
+3. Start the stack: `docker compose up -d`
 
 **Move to a new machine:**
 
-1. Copy `${DATA_DIR}/` to the new machine
-2. Clone the repo, set `DATA_DIR` in `docker/.env`
-3. Run `docker compose up -d` — all history and models are immediately available
+1. Stop the stack on the old machine and copy `${DATA_DIR}/` to the new machine
+2. On the new machine: clone the repo, copy `.env.example` → `docker/.env`, set `DATA_DIR`
+3. Run `docker compose up -d --build` — all history and models are immediately available
 
 ---
 
@@ -505,6 +525,21 @@ You (toggle ON) → Open WebUI → SearXNG → Public search engines
 ---
 
 ## Runtipi App Store
+
+> **Standalone vs Runtipi — which should I use?**
+>
+> | | Standalone (`scripts/install.sh`) | Runtipi |
+> |---|---|---|
+> | **Ollama image** | Custom-built with Intel oneAPI GPU drivers | Stock `ollama/ollama` image (no Intel GPU acceleration) |
+> | **HTTPS** | Plain HTTP only (see Issue #42 for proxy guide) | Automatic via Traefik reverse proxy |
+> | **Unified portal** | Included at `:45200` | Not included |
+> | **Scripts (`logs.sh` etc.)** | Fully supported | **Not compatible** — standalone scripts only |
+> | **Install method** | One-liner curl or local clone | Runtipi app store UI |
+>
+> Use **Standalone** if you have an Intel GPU and want GPU-accelerated inference.
+> Use **Runtipi** if you are already running Runtipi and do not need Intel GPU passthrough.
+
+> **Note for Runtipi users:** The `scripts/` directory (`logs.sh`, `update.sh`, `pull-model.sh`, etc.) is designed for the standalone installation only. Container names differ in Runtipi and these scripts will not find them. Use Runtipi's own log viewer and management UI to manage the app.
 
 ### Option A — Add as a custom app store
 

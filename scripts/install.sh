@@ -265,11 +265,18 @@ sudo mkdir -p \
 sudo chown -R "$USER:$USER" "${DATA_DIR}" 2>/dev/null || true
 success "Directories ready."
 
-# Copy default SearXNG config if the data dir is empty
+# Copy default SearXNG config if the data dir is empty.
+# If the file already exists, preserve the user's customisations — but print a
+# visible message so they know the repo's default was not applied and give them
+# the manual re-sync command in case they need a new key or engine setting.
 if [[ ! -f "${DATA_DIR}/searxng/settings.yml" ]] \
    && [[ -f "${DOCKER_DIR}/searxng/settings.yml" ]]; then
   cp "${DOCKER_DIR}/searxng/settings.yml" "${DATA_DIR}/searxng/settings.yml"
   info "Default searxng/settings.yml copied to ${DATA_DIR}/searxng/"
+elif [[ -f "${DATA_DIR}/searxng/settings.yml" ]]; then
+  info "SearXNG config already exists — your customisations are preserved."
+  info "To apply any new defaults from the repo:"
+  info "  cp ${DOCKER_DIR}/searxng/settings.yml ${DATA_DIR}/searxng/settings.yml"
 fi
 
 # ── Write docker/.env ─────────────────────────────────────────────────────────
