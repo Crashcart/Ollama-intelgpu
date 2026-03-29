@@ -39,6 +39,18 @@ All data is stored under a single configurable `DATA_DIR` on the host — no ano
   - Confirm the device is visible: `ls /dev/dri/renderD*`
 - **Docker** and **Docker Compose** — the installer will install them automatically if they are missing
 
+> **Security note — authentication is off by default.**
+> `WEBUI_AUTH=false` in `.env.example` means the Open WebUI chat interface is accessible to anyone who can reach the host's IP on the LAN — **no login required**. This is intentional for trusted single-user home networks.
+>
+> If you are on a **shared LAN, cloud VM, or any network you do not fully control**, enable authentication before first start:
+>
+> ```ini
+> # docker/.env
+> WEBUI_AUTH=true
+> ```
+>
+> With `WEBUI_AUTH=true`, the first user to register becomes the admin. Set `ENABLE_SIGNUP=false` afterwards to prevent others from creating accounts.
+
 ---
 
 ## Method 1 — One-Command Installer
@@ -207,6 +219,56 @@ The stack is designed to work across subnets out of the box:
   ```
 
 > **Note:** Routing between subnets is an infrastructure concern (router/firewall between VLANs). The stack itself has no subnet restrictions once the host firewall is open.
+
+---
+
+## HTTPS / TLS (Optional)
+
+All services run on plain HTTP by default. This is fine for a trusted home network but exposes credentials and prompts in plaintext on shared LANs or cloud VMs.
+
+The easiest way to add HTTPS is a **Caddy** reverse proxy — it handles TLS automatically with zero certificate management:
+
+**Step 1 — Add Caddy to `docker/docker-compose.yml`:**
+
+```yaml
+  caddy:
+    image: caddy:alpine
+    container_name: ollama-caddy
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ollama_net
+
+volumes:
+  caddy_data:
+  caddy_config:
+```
+
+**Step 2 — Create `docker/Caddyfile`:**
+
+```
+# Replace ollama.example.com with your domain or LAN hostname.
+# For a self-signed cert on LAN (no domain), use: tls internal
+ollama.example.com {
+    reverse_proxy ollama-portal:8080
+}
+```
+
+**Step 3 — Start Caddy:**
+
+```bash
+cd docker && docker compose up -d caddy
+```
+
+Caddy will automatically obtain a Let's Encrypt certificate for your domain (port 443 must be reachable from the internet), or issue a locally-trusted self-signed cert with `tls internal` for LAN-only use.
+
+> For Nginx or Traefik setups, proxy `http://ollama-portal:8080` (portal), `http://ollama-open-webui:8080` (chat), and `http://ollama-model-manager:8080` (models) on the internal `ollama_net` network.
 
 ---
 
@@ -447,6 +509,19 @@ docker exec ollama clinfo | grep -i "device name"
 # Run a quick inference
 docker exec ollama ollama run mistral "hello"
 ```
+
+**Build failure — Intel GPU driver download fails**
+
+The `docker/Dockerfile` fetches Intel oneAPI packages from `repositories.intel.com` at build time. If that server is unreachable (network outage, CDN issue, or the package name has changed), the build fails with an error like:
+
+```
+E: Failed to fetch https://repositories.intel.com/...
+```
+
+**Fix:**
+1. Check your internet connection and retry: `bash scripts/install.sh --recreate`
+2. Clear the Docker build cache if a partial layer was cached: `docker builder prune --filter type=exec.cachemount`
+3. If the error persists, check https://github.com/intel/compute-runtime/releases for the current package name and open an issue on this repo.
 
 ---
 

@@ -48,10 +48,15 @@
 # containers try to reach huggingface.co, docker.io, pypi.org, etc.
 # Setting explicit public DNS on each service that needs outbound internet
 # access bypasses the stub and ensures reliable name resolution.
+#
+# Override DNS_PRIMARY / DNS_SECONDARY in docker/.env for:
+#   - Split-horizon / filtering DNS (corporate networks, Pi-hole)
+#   - VPN-based name resolution (custom DNS servers over VPN)
+#   - Preferred providers (e.g. 9.9.9.9 Quad9, 208.67.222.222 OpenDNS)
 x-internet-dns: &internet-dns
   dns:
-    - 1.1.1.1   # Cloudflare
-    - 8.8.8.8   # Google
+    - ${DNS_PRIMARY:-1.1.1.1}    # Override with DNS_PRIMARY in docker/.env
+    - ${DNS_SECONDARY:-8.8.8.8}  # Override with DNS_SECONDARY in docker/.env
 
 services:
 
@@ -278,12 +283,13 @@ services:
       - ${DATA_DIR:-/opt/ollama}/webui:/app/backend/data
 
     # Falls back to wget if curl is not present in the image.
+    # start_period: set WEBUI_START_PERIOD in docker/.env to extend on slow hardware.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || wget -qO/dev/null http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: ${WEBUI_START_PERIOD:-60s}
 
     logging:
       driver: json-file
@@ -394,12 +400,13 @@ services:
     # No host port — pipelines is private to the Docker network.
     # Open WebUI connects to it via http://pipelines:9099 (OPENAI_API_BASE_URLS).
 
+    # start_period: set PIPELINES_START_PERIOD in docker/.env to extend on slow hardware.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9099/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: ${PIPELINES_START_PERIOD:-30s}
 
     logging:
       driver: json-file
