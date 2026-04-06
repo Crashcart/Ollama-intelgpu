@@ -23,19 +23,23 @@ ENV DEBIAN_FRONTEND=noninteractive \
     OLLAMA_HOST=0.0.0.0:11434 \
     OLLAMA_MODELS=/root/.ollama/models
 
-# Install base tools (wget/gpg needed for Intel repo key)
+# Install base tools (curl/gpg needed for Intel repo key)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
     gpg-agent \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Add Intel GPU repository
-RUN wget -qO- https://repositories.intel.com/gpu/intel-graphics.key \
+# curl -fsSL is used instead of wget so that HTTP error responses (4xx/5xx)
+# cause an immediate build failure rather than silently piping an HTML error
+# page into gpg (which produces the misleading "no valid OpenPGP data" error).
+# The LTS-pinned distribution path (jammy/lts/2350) is used because the
+# generic "jammy unified" path was removed from the Intel repo.
+RUN curl -fsSL https://repositories.intel.com/gpu/intel-graphics.key \
     | gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg \
-  && echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy unified" \
+  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy/lts/2350 unified" \
     | tee /etc/apt/sources.list.d/intel-gpu-jammy.list
 
 # Install Intel GPU compute runtime (OpenCL + Level Zero)
