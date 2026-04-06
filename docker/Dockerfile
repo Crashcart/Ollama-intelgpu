@@ -23,20 +23,25 @@ ENV DEBIAN_FRONTEND=noninteractive \
     OLLAMA_HOST=0.0.0.0:11434 \
     OLLAMA_MODELS=/root/.ollama/models
 
-# Install base tools (wget/gpg needed for Intel repo key)
+# Install base tools (curl/gpg needed for Intel repo key)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
     gpg-agent \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Add Intel GPU repository
-RUN wget -qO- https://repositories.intel.com/gpu/intel-graphics.key \
-    | gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg \
+# curl -fsSL fails fast on HTTP errors (wget -qO- silently passes HTML error pages to gpg).
+# --retry 3 handles transient CDN hiccups without failing the entire build.
+RUN curl -fsSL --retry 3 --retry-delay 5 \
+    https://repositories.intel.com/gpu/intel-graphics.key \
+    -o /tmp/intel-key.asc \
+  && gpg --dearmor < /tmp/intel-key.asc \
+       > /usr/share/keyrings/intel-graphics.gpg \
+  && rm /tmp/intel-key.asc \
   && echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy unified" \
-    | tee /etc/apt/sources.list.d/intel-gpu-jammy.list
+       > /etc/apt/sources.list.d/intel-gpu-jammy.list
 
 # Install Intel GPU compute runtime (OpenCL + Level Zero)
 # intel-opencl-icd  — OpenCL ICD for all Intel GPU generations (4th gen+)

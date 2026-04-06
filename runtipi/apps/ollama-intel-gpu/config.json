@@ -7,7 +7,7 @@
   "author": "Crashcart",
   "port": 45213,
   "categories": ["ai"],
-  "description": "",
+  "description": "Full self-hosted LLM stack with Intel GPU acceleration (Arc, Iris Xe, integrated graphics) via Level Zero and OpenCL. Includes Ollama, Open WebUI (chat + RAG + voice), SearXNG (web search), Pipelines (tools/functions), model manager, memory browser, file catalog, ghost runner (background tasks), and a unified portal dashboard. Install once, pull models on demand — no cloud required.",
   "tipiVersion": 2,
   "version": "latest",
   "no_gui": false,
@@ -84,17 +84,17 @@
     {
       "type": "password",
       "label": "Pipelines API key",
-      "hint": "Shared secret between Open WebUI and the Pipelines container. Change this before exposing to a network.",
+      "hint": "Shared secret between Open WebUI and the Pipelines container. Must be set to a strong random value.",
       "env_variable": "PIPELINES_API_KEY",
-      "default": "0p3n-w3bu!",
+      "default": "",
       "required": true
     },
     {
       "type": "boolean",
       "label": "Enable authentication",
-      "hint": "When enabled, users must log in. The first user to register becomes admin.",
+      "hint": "When enabled, users must log in. The first user to register becomes admin. Strongly recommended on shared networks.",
       "env_variable": "WEBUI_AUTH",
-      "default": false,
+      "default": true,
       "required": false
     },
     {

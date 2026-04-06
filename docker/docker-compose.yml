@@ -50,8 +50,8 @@
 # access bypasses the stub and ensures reliable name resolution.
 x-internet-dns: &internet-dns
   dns:
-    - 1.1.1.1   # Cloudflare
-    - 8.8.8.8   # Google
+    - ${DNS_PRIMARY:-1.1.1.1}    # override via DNS_PRIMARY in .env
+    - ${DNS_SECONDARY:-8.8.8.8}  # override via DNS_SECONDARY in .env
 
 services:
 
@@ -206,7 +206,7 @@ services:
       # Manage active pipelines in Open WebUI: Admin → Settings → Pipelines.
       - ENABLE_OPENAI_API=true
       - OPENAI_API_BASE_URLS=http://pipelines:9099
-      - OPENAI_API_KEYS=${PIPELINES_API_KEY:-0p3n-w3bu!}
+      - OPENAI_API_KEYS=${PIPELINES_API_KEY}
 
       # ── RAG — document Q&A (PDF, DOCX, TXT, URLs) ────────────────────────
       # Upload documents in any chat via the paperclip icon. Open WebUI chunks
@@ -269,7 +269,7 @@ services:
       # ENABLE_SIGNUP controls whether new users can register themselves.
       # WEBUI_SECRET_KEY is the JWT signing secret — auto-generated if empty,
       # but set it explicitly so sessions survive container restarts.
-      - WEBUI_AUTH=${WEBUI_AUTH:-false}
+      - WEBUI_AUTH=${WEBUI_AUTH:-true}
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-true}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-}
 
@@ -283,7 +283,7 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
 
     logging:
       driver: json-file
@@ -383,7 +383,7 @@ services:
 
     environment:
       # Key must match OPENAI_API_KEYS in open-webui — set both in docker/.env
-      - PIPELINES_API_KEY=${PIPELINES_API_KEY:-0p3n-w3bu!}
+      - PIPELINES_API_KEY=${PIPELINES_API_KEY}
 
     volumes:
       # ── Pipeline scripts (exportable) ─────────────────────────────────────
@@ -399,7 +399,7 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 45s
 
     logging:
       driver: json-file

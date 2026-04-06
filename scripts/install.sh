@@ -43,7 +43,7 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 DATA_DIR="${DATA_DIR:-/opt/ollama}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
 WEBUI_PORT="${WEBUI_PORT:-45213}"
-OLLAMA_VERSION="${OLLAMA_VERSION:-latest}"
+OLLAMA_VERSION="${OLLAMA_VERSION:-0.6.5}"
 REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 # Branch is auto-detected below; override with --branch or the REPO_BRANCH env var.
 REPO_BRANCH="${REPO_BRANCH:-}"
@@ -72,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --version)    OLLAMA_VERSION="$2"; shift 2 ;;
     --branch)     REPO_BRANCH="$2";   shift 2 ;;
     --recreate)   RECREATE_CONTAINERS=true; shift ;;
+    --force)      FORCE=true; shift ;;
     --allow-from) ALLOW_FROM="$2"; shift 2 ;;
     --help|-h)
       echo "Usage: $0 [--data-dir DIR] [--port PORT] [--webui-port PORT] [--version TAG] [--branch NAME] [--recreate] [--allow-from CIDR[,CIDR...]]"
@@ -82,6 +83,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --version    TAG            Ollama image tag           (default: latest)"
       echo "  --branch     NAME           Git branch for curl install (default: main)"
       echo "  --recreate                  Force-recreate all containers (default: preserve existing)"
+      echo "  --force                     Skip container name conflict check"
       echo "  --allow-from CIDR[,CIDR...] Firewall: comma-separated source CIDRs allowed to reach UI ports"
       echo "                              Examples: 192.168.1.0/24   or   10.0.0.0/8,172.16.0.0/12"
       echo "                              Default: open to all sources (0.0.0.0/0)"
@@ -270,6 +272,11 @@ if [[ ! -f "${DATA_DIR}/searxng/settings.yml" ]] \
    && [[ -f "${DOCKER_DIR}/searxng/settings.yml" ]]; then
   cp "${DOCKER_DIR}/searxng/settings.yml" "${DATA_DIR}/searxng/settings.yml"
   info "Default searxng/settings.yml copied to ${DATA_DIR}/searxng/"
+elif [[ -f "${DATA_DIR}/searxng/settings.yml" ]] \
+  && grep -q 'ultrasecretkey' "${DATA_DIR}/searxng/settings.yml" 2>/dev/null; then
+  warn "SearXNG settings.yml still uses the placeholder secret_key."
+  warn "To rotate it run:"
+  warn "  sed -i 's/secret_key: .*/secret_key: \"'\"$(openssl rand -hex 32)\"'\"/' \"${DATA_DIR}/searxng/settings.yml\""
 fi
 
 # ── Write docker/.env ─────────────────────────────────────────────────────────
@@ -297,6 +304,22 @@ if [[ ! -f "$ENV_FILE" ]]; then
 else
   info "Updating ${ENV_FILE} with current settings..."
 fi
+# Auto-generate secrets on first install (or if still at insecure defaults).
+# These are written once and never overwritten on re-runs.
+if ! grep -q '^PIPELINES_API_KEY=' "$ENV_FILE" 2>/dev/null \
+   || grep -q '^PIPELINES_API_KEY=0p3n-w3bu!' "$ENV_FILE" 2>/dev/null \
+   || grep -q '^PIPELINES_API_KEY=$' "$ENV_FILE" 2>/dev/null; then
+  _new_key="$(openssl rand -hex 20)"
+  _stamp_env "$ENV_FILE" PIPELINES_API_KEY "$_new_key"
+  success "Generated new PIPELINES_API_KEY"
+fi
+
+if ! grep -qE '^WEBUI_SECRET_KEY=.+' "$ENV_FILE" 2>/dev/null; then
+  _new_secret="$(openssl rand -hex 32)"
+  _stamp_env "$ENV_FILE" WEBUI_SECRET_KEY "$_new_secret"
+  success "Generated new WEBUI_SECRET_KEY"
+fi
+
 # Always stamp install-time values so re-runs and upgrades stay consistent.
 # Everything else in the file (API keys, model names, feature flags, etc.) is left untouched.
 _stamp_env "$ENV_FILE" \
@@ -427,6 +450,37 @@ if [[ "$PORTAL_PORT$WEBUI_PORT$MODEL_MANAGER_PORT$OLLAMA_PORT$DOZZLE_PORT" != \
     OLLAMA_PORT          "${OLLAMA_PORT}" \
     DOZZLE_PORT          "${DOZZLE_PORT}"
   info "Updated ${ENV_FILE} with reassigned ports."
+fi
+
+# ── Check for container name conflicts ────────────────────────────────────────
+# Runs after port checks; warns when a same-named container is already running
+# so Docker Compose doesn't silently reuse or conflict with an existing stack.
+sep
+info "Checking for container name conflicts..."
+
+_STACK_CONTAINERS=(
+  ollama ollama-open-webui ollama-searxng ollama-pipelines
+  ollama-model-manager ollama-uds-proxy ollama-memory-browser
+  ollama-file-catalog ollama-ghost-runner ollama-portal ollama-dozzle
+)
+
+_cname_conflicts=false
+for _cname in "${_STACK_CONTAINERS[@]}"; do
+  _cid=$(docker ps -q -f "name=^${_cname}$" 2>/dev/null || true)
+  if [[ -n "$_cid" ]]; then
+    warn "  Container '${_cname}' is already running (${_cid})"
+    _cname_conflicts=true
+  else
+    success "  ${_cname} — free"
+  fi
+done
+
+if [[ "$_cname_conflicts" == true ]]; then
+  echo
+  warn "One or more container names are already in use by a running container."
+  info "To stop the existing stack:  docker compose -f ${DOCKER_DIR}/docker-compose.yml down"
+  info "Then re-run this installer,  or pass --force to skip this check."
+  [[ "${FORCE:-false}" != "true" ]] && error "Aborting due to container name conflicts. Use --force to override."
 fi
 
 # ── Open firewall ports for LAN access ───────────────────────────────────────
