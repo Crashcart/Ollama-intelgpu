@@ -1,7 +1,7 @@
 # 🗺️ Session Planning
-**Date**: 2026-04-06
+**Date**: 2026-04-06 → 2026-04-07
 **Issue**: #59 — important change (Agnostic Docker Ecosystem Deployment & Conflict Prevention TDR)
-**Branch**: copilot/implement-docker-naming-convention
+**Branch**: copilot/update-docker-images
 
 ## Approach
 Implement the TDR requirements with minimal, surgical changes:
@@ -10,6 +10,7 @@ Implement the TDR requirements with minimal, surgical changes:
 3. Create `scripts/deploy.sh` as a standalone pre-flight wrapper (container name + port conflict detection, `--force`, `--down`, `--status` flags)
 4. Update all scripts that reference container names to use the PREFIX dynamically
 5. Change default model in `pull-model.sh` to `llama3.2:1b` (smallest, per owner comment)
+6. Fix Open WebUI startup timeout: RETRIES 40→100 (300 s), WEBUI_START_PERIOD 60s→120s
 
 ## Decisions Log
 - [2026-04-06] Set default PROJECT_PREFIX to `olama-intelgpu` (matches GitHub repo name, lowercase with hyphens for Docker compatibility)
@@ -19,6 +20,8 @@ Implement the TDR requirements with minimal, surgical changes:
 - [2026-04-06] Port conflict coverage: all host-exposed ports checked (OLLAMA, WEBUI, MODEL_MANAGER, PORTAL, GHOST_RUNNER, MEMORY, FILE_CATALOG, DOZZLE); internal-only services skipped
 - [2026-04-06] install.sh preserves user-set PROJECT_PREFIX on re-run (reads from .env before stamping)
 - [2026-04-06] Default model changed from `mistral` (~4.1 GB) to `llama3.2:1b` (~770 MB) per owner's comment
+- [2026-04-07] Open WebUI wait timeout increased from 40 retries (120 s) to 100 retries (300 s) — first install needs 3-5 min for DB migrations and embedding model downloads
+- [2026-04-07] WEBUI_START_PERIOD default increased from 60s to 120s in both .env.example and docker-compose.yml
 
 ## Open Questions
 - [ ] Should image names also use PROJECT_PREFIX (e.g. `${PROJECT_PREFIX}/app:latest` as TDR suggests)?

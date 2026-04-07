@@ -1,5 +1,5 @@
 # 📋 Active Task List
-**Last Updated**: 2026-04-06 04:00 UTC
+**Last Updated**: 2026-04-07 03:30 UTC
 **Current Session**: Copilot Enterprise Agent
 
 ## Current Tasks
@@ -12,7 +12,9 @@
 | 5  | Update scripts/pull-model.sh — dynamic container name + smallest default model | ✅ completed | 🟡 MEDIUM | Default changed to llama3.2:1b |
 | 6  | Update scripts/uninstall.sh — PROJECT_PREFIX fallback container list | ✅ completed | 🟡 MEDIUM | Done |
 | 7  | Update scripts/logs.sh — dynamic CNAME map | ✅ completed | 🟡 MEDIUM | Done |
-| 8  | Validate all changes — shellcheck + manual review | 🔵 in-progress | 🟡 MEDIUM | Running now |
+| 8  | Validate all changes — shellcheck + manual review | ✅ completed | 🟡 MEDIUM | Done |
+| 9  | Fix Open WebUI startup timeout (too short on first install) | ✅ completed | 🔴 HIGH | RETRIES 40→100, WEBUI_START_PERIOD 60s→120s |
 
 ## Completed This Session
 - ✅ Task 1–7: Implement Docker PROJECT_PREFIX naming convention (issue #59)
+- ✅ Task 9: Fix Open WebUI "did not become ready in time" false timeout

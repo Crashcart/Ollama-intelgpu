@@ -646,7 +646,9 @@ success "Ollama is ready."
 
 # ── Wait for Open WebUI ────────────────────────────────────────────────────────
 info "Waiting for Open WebUI to become ready (starts after Ollama + Pipelines)..."
-RETRIES=40
+# On first install Open WebUI must run DB migrations and download embedding
+# models before serving requests — allow up to 5 minutes (100 × 3 s).
+RETRIES=100
 until curl -sf "http://localhost:${WEBUI_PORT}/" &>/dev/null; do
   RETRIES=$((RETRIES - 1))
   if [[ $RETRIES -le 0 ]]; then
