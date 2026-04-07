@@ -3,7 +3,7 @@
 # uninstall.sh — Remove the Ollama Intel GPU stack
 #
 # One-liner (mirrors install.sh — no local clone required):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/uninstall.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/uninstall.sh)
 #
 # From a local clone:
 #   bash scripts/uninstall.sh [OPTIONS]
@@ -34,6 +34,7 @@ MODEL_MANAGER_PORT="${MODEL_MANAGER_PORT:-45214}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
 DOZZLE_PORT="${DOZZLE_PORT:-9999}"
 ALLOW_FROM="${ALLOW_FROM:-any}"
+PROJECT_PREFIX="${PROJECT_PREFIX:-olama-intelgpu}"
 PURGE_DATA=true
 KEEP_IMAGES=false
 YES=false
@@ -89,6 +90,7 @@ if [[ -n "$_ENV_FILE" ]]; then
   _v=$(_env_read OLLAMA_PORT);        [[ -n "$_v" ]] && OLLAMA_PORT="$_v"
   _v=$(_env_read DOZZLE_PORT);        [[ -n "$_v" ]] && DOZZLE_PORT="$_v"
   _v=$(_env_read ALLOW_FROM);         [[ -n "$_v" ]] && ALLOW_FROM="$_v"
+  _v=$(_env_read PROJECT_PREFIX);     [[ -n "$_v" ]] && PROJECT_PREFIX="$_v"
   OLLAMA_VERSION=$(_env_read OLLAMA_VERSION || echo "latest")
 else
   OLLAMA_VERSION="latest"
@@ -211,8 +213,10 @@ if [[ -n "$COMPOSE_CMD" && -n "$COMPOSE_FILE" ]]; then
 else
   warn "Compose file not found — stopping containers by name..."
   _any_removed=false
-  for cname in ollama ollama-open-webui ollama-model-manager ollama-portal \
-                ollama-searxng ollama-pipelines ollama-dozzle; do
+  for cname in "${PROJECT_PREFIX}-ollama" "${PROJECT_PREFIX}-open-webui" \
+               "${PROJECT_PREFIX}-model-manager" "${PROJECT_PREFIX}-portal" \
+               "${PROJECT_PREFIX}-searxng" "${PROJECT_PREFIX}-pipelines" \
+               "${PROJECT_PREFIX}-dozzle"; do
     if docker inspect "$cname" &>/dev/null 2>&1; then
       docker stop "$cname" 2>/dev/null || true
       docker rm   "$cname" 2>/dev/null || true
@@ -435,7 +439,7 @@ if ! $PURGE_DATA && [[ -d "$DATA_DIR" ]]; then
   echo    "    └── memory/     — AI memory store"
   echo
   echo    "  To delete it now:  sudo rm -rf ${DATA_DIR}"
-  echo    "  To reinstall:      bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh)"
+  echo    "  To reinstall:      bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/install.sh)"
   echo
 fi
 

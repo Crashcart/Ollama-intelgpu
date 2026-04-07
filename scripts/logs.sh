@@ -69,14 +69,15 @@ _set_env() {
 
 DATA_DIR="$(_read_env DATA_DIR /opt/ollama)"
 DOZZLE_PORT="$(_read_env DOZZLE_PORT 9999)"
+PROJECT_PREFIX="$(_read_env PROJECT_PREFIX olama-intelgpu)"
 LOG_DIR="${DATA_DIR}/logs"
 CONTAINERS=(ollama open-webui searxng pipelines)
 # Maps compose service name → actual container_name (as set in docker-compose.yml)
 declare -A CNAME=(
-  [ollama]="ollama"
-  [open-webui]="ollama-open-webui"
-  [searxng]="ollama-searxng"
-  [pipelines]="ollama-pipelines"
+  [ollama]="${PROJECT_PREFIX}-ollama"
+  [open-webui]="${PROJECT_PREFIX}-open-webui"
+  [searxng]="${PROJECT_PREFIX}-searxng"
+  [pipelines]="${PROJECT_PREFIX}-pipelines"
 )
 
 # ---------------------------------------------------------------------------
