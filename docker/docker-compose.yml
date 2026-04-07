@@ -282,14 +282,15 @@ services:
       # ── Chat history, RAG docs, embeddings, settings (exportable) ─────────
       - ${DATA_DIR:-/opt/ollama}/webui:/app/backend/data
 
-    # Falls back to wget if curl is not present in the image.
+    # /health responds as soon as the FastAPI server starts — before the slower
+    # first-run tasks (embedding model download, DB migrations) complete.
     # start_period: set WEBUI_START_PERIOD in docker/.env to extend on slow hardware.
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || wget -qO/dev/null http://localhost:8080/"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || wget -qO/dev/null http://localhost:8080/health"]
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: ${WEBUI_START_PERIOD:-120s}
+      start_period: ${WEBUI_START_PERIOD:-300s}
 
     logging:
       driver: json-file
@@ -406,7 +407,7 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: ${PIPELINES_START_PERIOD:-30s}
+      start_period: ${PIPELINES_START_PERIOD:-60s}
 
     logging:
       driver: json-file

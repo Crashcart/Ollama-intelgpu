@@ -20,8 +20,7 @@ Implement the TDR requirements with minimal, surgical changes:
 - [2026-04-06] Port conflict coverage: all host-exposed ports checked (OLLAMA, WEBUI, MODEL_MANAGER, PORTAL, GHOST_RUNNER, MEMORY, FILE_CATALOG, DOZZLE); internal-only services skipped
 - [2026-04-06] install.sh preserves user-set PROJECT_PREFIX on re-run (reads from .env before stamping)
 - [2026-04-06] Default model changed from `mistral` (~4.1 GB) to `llama3.2:1b` (~770 MB) per owner's comment
-- [2026-04-07] Open WebUI wait timeout increased from 40 retries (120 s) to 100 retries (300 s) — first install needs 3-5 min for DB migrations and embedding model downloads
-- [2026-04-07] WEBUI_START_PERIOD default increased from 60s to 120s in both .env.example and docker-compose.yml
+- [2026-04-07] CRITICAL fix: Open WebUI /health endpoint used instead of / — /health responds immediately on FastAPI startup, before embedding model downloads; RETRIES bumped to 200 (600s); WEBUI_START_PERIOD 300s; PIPELINES_START_PERIOD 60s; auto-pull llama3.2:1b if no models exist
 
 ## Open Questions
 - [ ] Should image names also use PROJECT_PREFIX (e.g. `${PROJECT_PREFIX}/app:latest` as TDR suggests)?
