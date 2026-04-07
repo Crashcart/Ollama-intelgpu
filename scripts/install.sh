@@ -644,16 +644,41 @@ done
 echo
 success "Ollama is ready."
 
+# ── Auto-pull smallest model if none exist ────────────────────────────────────
+_existing_models="0"
+_tags_json=$(curl -sf "http://localhost:${OLLAMA_PORT}/api/tags" 2>/dev/null || true)
+if [[ -n "$_tags_json" ]]; then
+  _existing_models=$(echo "$_tags_json" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('models',[])))" \
+    2>/dev/null || echo "0")
+fi
+if [[ "$_existing_models" == "0" ]]; then
+  sep
+  info "No models installed — pulling llama3.2:1b (~770 MB, smallest useful chat model)..."
+  info "This is the fastest way to get chatting. You can add larger models later via:"
+  info "  bash ${INSTALL_DIR}/scripts/pull-model.sh"
+  echo
+  TTY_FLAG=; [ -t 1 ] && TTY_FLAG=t
+  docker exec -i${TTY_FLAG} "${PROJECT_PREFIX}-ollama" ollama pull llama3.2:1b \
+    && success "llama3.2:1b ready." \
+    || warn "Model pull failed. Run manually: bash ${INSTALL_DIR}/scripts/pull-model.sh"
+else
+  info "Existing models found — skipping default model pull."
+fi
+
 # ── Wait for Open WebUI ────────────────────────────────────────────────────────
 info "Waiting for Open WebUI to become ready (starts after Ollama + Pipelines)..."
-# On first install Open WebUI must run DB migrations and download embedding
-# models before serving requests — allow up to 5 minutes (100 × 3 s).
-RETRIES=100
-until curl -sf "http://localhost:${WEBUI_PORT}/" &>/dev/null; do
+# /health responds as soon as the FastAPI server starts — use it instead of /
+# which only becomes available after sentence-transformer embedding models are
+# downloaded (can take several minutes on first install).
+# Allow up to 10 minutes (200 × 3 s) for very slow hardware or connections.
+RETRIES=200
+until curl -sf "http://localhost:${WEBUI_PORT}/health" &>/dev/null; do
   RETRIES=$((RETRIES - 1))
   if [[ $RETRIES -le 0 ]]; then
-    warn "Open WebUI did not become ready in time — it may still be starting."
-    warn "Check: docker logs ${PROJECT_PREFIX}-open-webui"
+    warn "Open WebUI has not responded yet — it may still be downloading embedding models."
+    warn "This is normal on first install. Visit http://localhost:${WEBUI_PORT} in a few minutes."
+    warn "To watch startup logs: docker logs -f ${PROJECT_PREFIX}-open-webui"
     break
   fi
   printf '.'
