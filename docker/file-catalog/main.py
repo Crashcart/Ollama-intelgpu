@@ -203,18 +203,36 @@ def list_drives():
     return {"drives": drives, "drives_dir": str(DRIVES_DIR)}
 
 
-@app.post("/api/file/move")
-def move_file(req: MoveRequest):
-    # Resolve intermediate '..' components without following the final symlink,
-    # so the DATA_DIR check works correctly even when the source is a symlink.
-    _p = DATA_DIR / req.path
-    src = _p.parent.resolve() / _p.name
+def _safe_path(user_path: str, base_dir: Path) -> Path:
+    """
+    Resolve *user_path* against *base_dir* safely.
 
-    # Safety: must be inside DATA_DIR
+    Rejects any path that would escape base_dir by:
+      1. Stripping leading slashes so the path is always relative.
+      2. Checking for '..' components before any filesystem access.
+      3. Verifying the resolved parent stays inside base_dir.
+
+    Raises HTTPException(400) if the path is invalid.
+    """
+    # Strip leading slashes to prevent absolute-path injection
+    clean = user_path.lstrip("/")
+    parts = Path(clean).parts
+    if ".." in parts:
+        raise HTTPException(400, "Path escapes DATA_DIR")
+    # Resolve the parent directory only (does not follow the final component
+    # even if it is a symlink) so the containment check works for symlinks.
+    candidate = base_dir / clean
+    resolved_parent = candidate.parent.resolve()
     try:
-        src.relative_to(DATA_DIR.resolve())
+        resolved_parent.relative_to(base_dir.resolve())
     except ValueError:
         raise HTTPException(400, "Path escapes DATA_DIR")
+    return resolved_parent / candidate.name
+
+
+@app.post("/api/file/move")
+def move_file(req: MoveRequest):
+    src = _safe_path(req.path, DATA_DIR)
 
     if not src.exists():
         raise HTTPException(404, "File not found")
@@ -258,18 +276,9 @@ def move_file(req: MoveRequest):
 
 @app.post("/api/file/restore")
 def restore_file(req: RestoreRequest):
-    # Resolve intermediate '..' without following the final path component so
-    # the DATA_DIR check is not confused by symlinks pointing into DRIVES_DIR.
-    _p = DATA_DIR / req.path
-    link = _p.parent.resolve() / _p.name
-
-    try:
-        link.relative_to(DATA_DIR.resolve())
-    except ValueError:
-        raise HTTPException(400, "Path escapes DATA_DIR")
+    lpath = _safe_path(req.path, DATA_DIR)
 
     # Must be a symlink pointing into DRIVES_DIR
-    lpath = DATA_DIR / req.path
     if not lpath.is_symlink():
         raise HTTPException(409, "File is not a symlink")
 

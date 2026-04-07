@@ -3,6 +3,7 @@ Tests for docker/model-manager/main.py
 """
 
 import json
+from pathlib import Path
 
 import pytest
 import httpx
@@ -10,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import load_service
 
-SERVICE = "/home/runner/work/Olama-intelgpu/Olama-intelgpu/docker/model-manager/main.py"
+SERVICE = str(Path(__file__).resolve().parent.parent / "docker" / "model-manager" / "main.py")
 
 
 # ---------------------------------------------------------------------------

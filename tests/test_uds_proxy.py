@@ -5,6 +5,7 @@ Tests for docker/uds-proxy/proxy.py
 import asyncio
 import io
 import os
+from pathlib import Path
 
 import pytest
 
@@ -30,7 +31,7 @@ def proxy_mod():
 
     _asyncio.run = _noop_run
     try:
-        path = "/home/runner/work/Olama-intelgpu/Olama-intelgpu/docker/uds-proxy/proxy.py"
+        path = str(Path(__file__).resolve().parent.parent / "docker" / "uds-proxy" / "proxy.py")
         if "uds_proxy_main" in sys.modules:
             return sys.modules["uds_proxy_main"]
         spec = importlib.util.spec_from_file_location("uds_proxy_main", path)

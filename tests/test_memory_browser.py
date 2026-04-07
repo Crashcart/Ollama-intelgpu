@@ -3,13 +3,14 @@ Tests for docker/memory-browser/main.py
 """
 
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import load_service
 
-SERVICE = "/home/runner/work/Olama-intelgpu/Olama-intelgpu/docker/memory-browser/main.py"
+SERVICE = str(Path(__file__).resolve().parent.parent / "docker" / "memory-browser" / "main.py")
 
 
 @pytest.fixture()
