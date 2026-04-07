@@ -3,12 +3,13 @@
 # update.sh — Update the Ollama stack to the latest images
 #
 # Usage:
-#   bash scripts/update.sh           # update open-webui + model-manager + portal
+#   bash scripts/update.sh           # update open-webui + all local services
 #   bash scripts/update.sh --all     # update every service
 #
 # What this does:
 #   1. Pulls latest registry images (open-webui, searxng, pipelines, dozzle)
-#   2. Rebuilds locally-built images (model-manager, portal) from source
+#   2. Rebuilds locally-built images (model-manager, portal, ghost-runner,
+#      memory-browser, file-catalog, uds-proxy) from source
 #   3. Recreates updated containers; all data (chat history, models) is preserved
 #
 # Safe to run while the stack is running.
@@ -39,7 +40,7 @@ while [[ $# -gt 0 ]]; do
     --help|-h)
       echo "Usage: $0 [--all]"
       echo ""
-      echo "  (no flags)  Update open-webui, model-manager, and portal (the UI services)"
+      echo "  (no flags)  Update open-webui and all locally-built services"
       echo "  --all       Update every service including searxng, pipelines, dozzle"
       exit 0 ;;
     *) echo "Unknown option: $1"; shift ;;
@@ -55,15 +56,15 @@ warn()    { echo -e "${YELLOW}[update]${NC} $*"; }
 # LOCAL_BUILDS  — have a local Dockerfile; must be rebuilt (not pulled)
 # REGISTRY_SVCS — pulled from a public registry
 if $UPDATE_ALL; then
-  LOCAL_BUILDS=(model-manager portal)
+  LOCAL_BUILDS=(model-manager portal ghost-runner memory-browser file-catalog uds-proxy)
   REGISTRY_SVCS=(open-webui pipelines searxng dozzle)
-  ALL_SERVICES=(open-webui model-manager portal pipelines searxng dozzle)
+  ALL_SERVICES=(open-webui model-manager portal ghost-runner memory-browser file-catalog uds-proxy pipelines searxng dozzle)
   info "Updating all services..."
 else
-  LOCAL_BUILDS=(model-manager portal)
+  LOCAL_BUILDS=(model-manager portal ghost-runner memory-browser file-catalog uds-proxy)
   REGISTRY_SVCS=(open-webui)
-  ALL_SERVICES=(open-webui model-manager portal)
-  info "Updating UI services (open-webui, model-manager, portal)..."
+  ALL_SERVICES=(open-webui model-manager portal ghost-runner memory-browser file-catalog uds-proxy)
+  info "Updating open-webui and all locally-built services..."
   info "Use --all to also update searxng, pipelines, and dozzle."
 fi
 echo ""

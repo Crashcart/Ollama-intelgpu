@@ -9,17 +9,21 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 ## What's Included
 
-| Container | Service | Purpose | Port |
+| Container name (default) | Service | Purpose | Port |
 |---|---|---|---|
-| `ollama-portal` | `portal` | **Unified web portal** — Chat, Models, and Logs in one tab | `45200` |
-| `ollama` | `ollama` | Ollama LLM engine — Intel GPU passthrough | `11434` |
-| `ollama-open-webui` | `open-webui` | Browser chat UI | `45213` |
-| `ollama-model-manager` | `model-manager` | Model search, download, and delete UI | `45214` |
-| `ollama-searxng` | `searxng` | Self-hosted web search backend | internal |
-| `ollama-pipelines` | `pipelines` | Python tool/function runtime for Open WebUI | internal |
-| `ollama-dozzle` | `dozzle` | Real-time web log viewer for all containers | `9999` |
+| `olama-intelgpu-portal` | `portal` | **Unified web portal** — Chat, Models, Logs, and Ghost Runner in one tab | `45200` |
+| `olama-intelgpu-ollama` | `ollama` | Ollama LLM engine — Intel GPU passthrough | `11434` |
+| `olama-intelgpu-open-webui` | `open-webui` | Browser chat UI | `45213` |
+| `olama-intelgpu-model-manager` | `model-manager` | Model search, download, and delete UI | `45214` |
+| `olama-intelgpu-ghost-runner` | `ghost-runner` | Background task generation with SSE resume | `45215` |
+| `olama-intelgpu-memory-browser` | `memory-browser` | Persistent AI memory store | `45216` |
+| `olama-intelgpu-file-catalog` | `file-catalog` | Large-file browser with external drive offload | `45217` |
+| `olama-intelgpu-searxng` | `searxng` | Self-hosted web search backend | internal |
+| `olama-intelgpu-pipelines` | `pipelines` | Python tool/function runtime for Open WebUI | internal |
+| `olama-intelgpu-uds-proxy` | `uds-proxy` | Unix Domain Socket proxy for Ollama | internal |
+| `olama-intelgpu-dozzle` | `dozzle` | Real-time web log viewer for all containers | `9999` |
 
-All containers carry the `ollama-` prefix so they are easy to identify in `docker ps` alongside other stacks.
+Container names use the `${PROJECT_PREFIX}` variable (default: `olama-intelgpu`). If you run multiple stacks on the same host, set a unique `PROJECT_PREFIX` in `docker/.env` to avoid name collisions.
 
 **The portal is the recommended bookmark.** Open `http://localhost:45200` once and you can reach Chat, Models, and Logs from the top nav without switching tabs or ports. Each service is still accessible directly on its own port if you prefer.
 
@@ -55,7 +59,7 @@ All data is stored under a single configurable `DATA_DIR` on the host — no ano
 
 ## Method 1 — One-Command Installer
 
-The fastest way to get the full stack running. Clones the repo, installs Docker if needed, builds the Intel GPU image, creates data directories, writes a `.env`, and starts all 7 containers. Safe to run over SSH — closing the terminal will not stop the install.
+The fastest way to get the full stack running. Clones the repo, installs Docker if needed, builds the Intel GPU image, creates data directories, writes a `.env`, and starts all 11 containers. Safe to run over SSH — closing the terminal will not stop the install.
 
 **Step 1 — Run the installer**
 
@@ -70,11 +74,11 @@ The installer will:
 3. Clone the repo to `/opt/ollama-stack/`
 4. Create data directories under `/opt/ollama/`
 5. Write `docker/.env` (or update it if one already exists)
-6. **Check all 5 ports for conflicts** — if any port is already in use by another process, print what is using it and ask for an alternative before continuing
+6. **Check all 8 ports for conflicts** — if any port is already in use by another process, print what is using it and ask for an alternative before continuing
 7. Open the host-facing ports in ufw or firewalld for LAN access
 8. Build the Ollama Intel GPU image (~5 min first run — installs Intel oneAPI drivers)
 9. Pull images for any containers that do not already exist; skip existing ones
-10. Start all 7 containers
+10. Start all 11 containers
 11. Wait until Ollama and Open WebUI are healthy
 
 The installer is **idempotent** — safe to re-run after an upgrade or a failed run. It updates ports and GPU group IDs in an existing `.env` without touching your custom settings (API keys, model names, feature flags, etc.).
@@ -256,7 +260,7 @@ volumes:
 # Replace ollama.example.com with your domain or LAN hostname.
 # For a self-signed cert on LAN (no domain), use: tls internal
 ollama.example.com {
-    reverse_proxy ollama-portal:8080
+    reverse_proxy portal:8080
 }
 ```
 
@@ -268,7 +272,7 @@ cd docker && docker compose up -d caddy
 
 Caddy will automatically obtain a Let's Encrypt certificate for your domain (port 443 must be reachable from the internet), or issue a locally-trusted self-signed cert with `tls internal` for LAN-only use.
 
-> For Nginx or Traefik setups, proxy `http://ollama-portal:8080` (portal), `http://ollama-open-webui:8080` (chat), and `http://ollama-model-manager:8080` (models) on the internal `ollama_net` network.
+> For Nginx or Traefik setups, proxy `http://portal:8080` (portal), `http://open-webui:8080` (chat), and `http://model-manager:8080` (models) on the internal `ollama_net` network.
 
 ---
 
@@ -298,7 +302,7 @@ WEBUI_PORT=45213
 Create the data directories:
 
 ```bash
-mkdir -p ${DATA_DIR}/{models,webui,searxng,pipelines,logs}
+mkdir -p ${DATA_DIR}/{models,webui,searxng,pipelines,ghost,memory,logs}
 ```
 
 **Step 3 — Build and start**
@@ -316,7 +320,7 @@ docker compose up -d --no-recreate
 **Step 4 — Pull a model**
 
 ```bash
-docker exec ollama ollama pull mistral
+docker exec olama-intelgpu-ollama ollama pull mistral
 # or use the helper
 bash scripts/pull-model.sh
 ```
@@ -354,7 +358,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/mai
 
 The script:
 1. Shows a full list of what will be removed (containers, images, volumes, networks) before asking
-2. Stops and removes all 7 Ollama containers (`docker compose down --volumes --remove-orphans`)
+2. Stops and removes all 11 Ollama containers (`docker compose down --volumes --remove-orphans`)
 3. Removes **all** locally-built images across every tag — `ollama:latest`, `ollama:0.6.2`, etc.
 4. Removes any Docker volumes and networks belonging to the stack
 5. Removes dangling build layers left over from `docker compose build`
@@ -385,7 +389,7 @@ bash /opt/ollama-stack/scripts/update.sh --all
 
 The script:
 1. Pulls the latest registry images (`open-webui`, `searxng`, `pipelines`, `dozzle`)
-2. **Rebuilds locally-built images from source** (`model-manager`, `portal`) with `--pull --no-cache`
+2. **Rebuilds locally-built images from source** (`model-manager`, `portal`, `ghost-runner`, `memory-browser`, `file-catalog`, `uds-proxy`) with `--pull --no-cache`
 3. Recreates the updated containers; all data is preserved
 
 > **Always include `portal` in updates.** The portal's diagnostic health-check page is baked into the image at build time. Running `update.sh` ensures it is always in sync with the current `model-manager` API.
@@ -416,6 +420,8 @@ ${DATA_DIR}/
 ├── webui/         ← Chat history, RAG documents, ChromaDB vector DB, user settings
 ├── searxng/       ← SearXNG runtime state
 ├── pipelines/     ← Pipeline .py scripts; drop files here to add tools to Open WebUI
+├── ghost/         ← Ghost Runner SQLite DB (background tasks and generated tokens)
+├── memory/        ← Memory Browser SQLite DB (persistent AI memories)
 └── logs/          ← Log files exported by scripts/logs.sh
 ```
 
@@ -435,7 +441,7 @@ For a live (running-stack) snapshot you can use SQLite's backup command directly
 
 ```bash
 # Safe live backup of just the chat database
-docker exec ollama-open-webui sqlite3 /app/backend/data/webui.db ".backup /app/backend/data/webui.db.bak"
+docker exec olama-intelgpu-open-webui sqlite3 /app/backend/data/webui.db ".backup /app/backend/data/webui.db.bak"
 cp ${DATA_DIR}/webui/webui.db.bak /mnt/backup/ollama/webui.db
 ```
 
@@ -504,10 +510,10 @@ Set in `docker/.env` and restart: `docker compose up -d dozzle`
 sudo intel_gpu_top
 
 # Verify OpenCL device is visible inside the container
-docker exec ollama clinfo | grep -i "device name"
+docker exec olama-intelgpu-ollama clinfo | grep -i "device name"
 
 # Run a quick inference
-docker exec ollama ollama run mistral "hello"
+docker exec olama-intelgpu-ollama ollama run mistral "hello"
 ```
 
 **Build failure — Intel GPU driver download fails**

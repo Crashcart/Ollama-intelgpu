@@ -141,7 +141,7 @@ echo "  Uninstall log: ${LOG_FILE}"
 echo "     → tail -f ${LOG_FILE}  (safe to close terminal)"
 echo
 echo "  This will:"
-echo "    • Stop and remove all 7 Ollama containers"
+echo "    • Stop and remove all 11 Ollama containers"
 
 if ! $KEEP_IMAGES; then
   if [[ ${#_ollama_imgs[@]} -gt 0 ]]; then
@@ -216,7 +216,9 @@ else
   for cname in "${PROJECT_PREFIX}-ollama" "${PROJECT_PREFIX}-open-webui" \
                "${PROJECT_PREFIX}-model-manager" "${PROJECT_PREFIX}-portal" \
                "${PROJECT_PREFIX}-searxng" "${PROJECT_PREFIX}-pipelines" \
-               "${PROJECT_PREFIX}-dozzle"; do
+               "${PROJECT_PREFIX}-dozzle" "${PROJECT_PREFIX}-ghost-runner" \
+               "${PROJECT_PREFIX}-memory-browser" "${PROJECT_PREFIX}-file-catalog" \
+               "${PROJECT_PREFIX}-uds-proxy"; do
     if docker inspect "$cname" &>/dev/null 2>&1; then
       docker stop "$cname" 2>/dev/null || true
       docker rm   "$cname" 2>/dev/null || true

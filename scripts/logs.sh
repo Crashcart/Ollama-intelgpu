@@ -21,7 +21,9 @@
 #   UNKNOWN        — Other warnings not in either category
 #                    → Investigate if seen repeatedly after a healthy start
 #
-# Container names: ollama | open-webui | searxng | pipelines | all (default)
+# Container names: ollama | open-webui | searxng | pipelines | model-manager |
+#                  portal | ghost-runner | memory-browser | file-catalog |
+#                  dozzle | uds-proxy | all (default)
 #
 # Debug mode changes per container:
 #   ollama      OLLAMA_DEBUG 0→1               GPU, model load, token traces
@@ -71,13 +73,20 @@ DATA_DIR="$(_read_env DATA_DIR /opt/ollama)"
 DOZZLE_PORT="$(_read_env DOZZLE_PORT 9999)"
 PROJECT_PREFIX="$(_read_env PROJECT_PREFIX olama-intelgpu)"
 LOG_DIR="${DATA_DIR}/logs"
-CONTAINERS=(ollama open-webui searxng pipelines)
+CONTAINERS=(ollama open-webui searxng pipelines model-manager portal ghost-runner memory-browser file-catalog dozzle uds-proxy)
 # Maps compose service name → actual container_name (as set in docker-compose.yml)
 declare -A CNAME=(
   [ollama]="${PROJECT_PREFIX}-ollama"
   [open-webui]="${PROJECT_PREFIX}-open-webui"
   [searxng]="${PROJECT_PREFIX}-searxng"
   [pipelines]="${PROJECT_PREFIX}-pipelines"
+  [model-manager]="${PROJECT_PREFIX}-model-manager"
+  [portal]="${PROJECT_PREFIX}-portal"
+  [ghost-runner]="${PROJECT_PREFIX}-ghost-runner"
+  [memory-browser]="${PROJECT_PREFIX}-memory-browser"
+  [file-catalog]="${PROJECT_PREFIX}-file-catalog"
+  [dozzle]="${PROJECT_PREFIX}-dozzle"
+  [uds-proxy]="${PROJECT_PREFIX}-uds-proxy"
 )
 
 # ---------------------------------------------------------------------------
@@ -122,12 +131,26 @@ cmd_status() {
     [open-webui]="INTERFACE"
     [searxng]="SEARCH"
     [pipelines]="PIPELINES"
+    [model-manager]="INTERFACE"
+    [portal]="INTERFACE"
+    [ghost-runner]="INTERFACE"
+    [memory-browser]="INTERFACE"
+    [file-catalog]="INTERFACE"
+    [dozzle]="LOGS"
+    [uds-proxy]="AI CORE"
   )
   declare -A DATA_PATH=(
     [ollama]="${DATA_DIR}/models"
     [open-webui]="${DATA_DIR}/webui"
     [searxng]="${DATA_DIR}/searxng"
     [pipelines]="${DATA_DIR}/pipelines"
+    [model-manager]=""
+    [portal]=""
+    [ghost-runner]="${DATA_DIR}/ghost"
+    [memory-browser]="${DATA_DIR}/memory"
+    [file-catalog]=""
+    [dozzle]=""
+    [uds-proxy]=""
   )
 
   # Read current debug state from .env
@@ -165,9 +188,12 @@ cmd_status() {
       warn "stopped / not found"
     fi
 
-    printf '  data path : %s\n' "${DATA_PATH[$c]}"
-    if [[ -d "${DATA_PATH[$c]}" ]]; then
-      printf '  disk used : %s\n' "$(du -sh "${DATA_PATH[$c]}" 2>/dev/null | cut -f1)"
+    local dp="${DATA_PATH[$c]:-}"
+    if [[ -n "$dp" ]]; then
+      printf '  data path : %s\n' "$dp"
+      if [[ -d "$dp" ]]; then
+        printf '  disk used : %s\n' "$(du -sh "$dp" 2>/dev/null | cut -f1)"
+      fi
     fi
 
     # Per-container debug detail
@@ -613,8 +639,9 @@ case "$CMD" in
     echo "  bash scripts/logs.sh debug-on              # verbose logging, restart containers"
     echo "  bash scripts/logs.sh debug-off             # normal logging, export + restart"
     echo
-    echo "  name: ollama | open-webui | searxng | pipelines | all (default: all)"
-    echo "  (these are compose service names; container names have the ollama- prefix)"
+    echo "  name: ollama | open-webui | searxng | pipelines | model-manager | portal |"
+    echo "        ghost-runner | memory-browser | file-catalog | dozzle | uds-proxy | all (default: all)"
+    echo "  (these are compose service names; container names have the PROJECT_PREFIX- prefix)"
     exit 1
     ;;
 esac

@@ -1,15 +1,14 @@
 # 🗺️ Session Planning
-**Date**: 2026-04-06
+**Date**: 2026-04-07
 **Issue**: #59 — important change (Agnostic Docker Ecosystem Deployment & Conflict Prevention TDR)
-**Branch**: copilot/implement-docker-naming-convention
+**Branch**: copilot/explore-codebase-and-create-implementation-plan
 
 ## Approach
-Implement the TDR requirements with minimal, surgical changes:
-1. Add `PROJECT_PREFIX=olama-intelgpu` to `.env.example` (repo-name-based default)
-2. Update all `container_name:` fields in `docker/docker-compose.yml` to use `${PROJECT_PREFIX:-olama-intelgpu}`
-3. Create `scripts/deploy.sh` as a standalone pre-flight wrapper (container name + port conflict detection, `--force`, `--down`, `--status` flags)
-4. Update all scripts that reference container names to use the PREFIX dynamically
-5. Change default model in `pull-model.sh` to `llama3.2:1b` (smallest, per owner comment)
+All planned gap fixes implemented:
+1. `scripts/uninstall.sh` — fallback container list expanded to all 11 services; "7 containers" → "11"
+2. `scripts/update.sh` — LOCAL_BUILDS now covers all 6 locally-built services
+3. `scripts/logs.sh` — CONTAINERS array, CNAME map, CATEGORY/DATA_PATH maps expanded to all 11 services
+4. `README.md` — container table updated (all 11 services, PROJECT_PREFIX naming); counts corrected; docker exec examples fixed; data dirs tree and mkdir updated; proxy examples fixed to use service names
 
 ## Decisions Log
 - [2026-04-06] Set default PROJECT_PREFIX to `olama-intelgpu` (matches GitHub repo name, lowercase with hyphens for Docker compatibility)
@@ -19,8 +18,10 @@ Implement the TDR requirements with minimal, surgical changes:
 - [2026-04-06] Port conflict coverage: all host-exposed ports checked (OLLAMA, WEBUI, MODEL_MANAGER, PORTAL, GHOST_RUNNER, MEMORY, FILE_CATALOG, DOZZLE); internal-only services skipped
 - [2026-04-06] install.sh preserves user-set PROJECT_PREFIX on re-run (reads from .env before stamping)
 - [2026-04-06] Default model changed from `mistral` (~4.1 GB) to `llama3.2:1b` (~770 MB) per owner's comment
+- [2026-04-07] Image name prefixing left as-is (e.g. `ollama-model-manager:latest`) — adding PROJECT_PREFIX to image names would break cached builds and is out of scope
+- [2026-04-07] deploy.sh remains a companion to install.sh; README does not promote it as primary entry point
+- [2026-04-07] Nginx/Traefik proxy examples updated to use Docker service names (portal:8080, open-webui:8080) — these are stable regardless of PROJECT_PREFIX; container_name is only for external docker ps identification
+- [2026-04-07] update.sh: all 6 local builds (model-manager, portal, ghost-runner, memory-browser, file-catalog, uds-proxy) included in both default and --all update paths
 
 ## Open Questions
-- [ ] Should image names also use PROJECT_PREFIX (e.g. `${PROJECT_PREFIX}/app:latest` as TDR suggests)?
-  Currently left as `ollama-model-manager:latest` etc. to minimize scope.
-- [ ] Should deploy.sh eventually replace install.sh as the primary entry point, or remain a companion script?
+- (none — all questions from previous session resolved)
