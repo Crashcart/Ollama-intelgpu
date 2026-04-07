@@ -48,8 +48,8 @@ The Ollama container bundles Intel OpenCL and Level Zero drivers so the GPU is u
 The Ollama container uses a custom image with Intel GPU drivers. Before installing, build and push it:
 
 ```bash
-git clone https://github.com/Crashcart/Ollama-intelgpu.git
-cd Ollama-intelgpu/docker
+git clone https://github.com/Crashcart/Olama-intelgpu.git
+cd Olama-intelgpu/docker
 docker build -t ghcr.io/crashcart/ollama-intel-gpu:latest .
 docker push ghcr.io/crashcart/ollama-intel-gpu:latest
 ```
@@ -63,7 +63,7 @@ SearXNG requires a `settings.yml` before it will start. Copy it from the repo **
 ```bash
 # Replace <APP_DATA_DIR> with the path Runtipi shows for this app's data
 mkdir -p <APP_DATA_DIR>/data/searxng
-curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/docker/searxng/settings.yml \
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/docker/searxng/settings.yml \
   -o <APP_DATA_DIR>/data/searxng/settings.yml
 ```
 

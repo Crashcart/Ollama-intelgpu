@@ -6,10 +6,10 @@
 #   bash scripts/install.sh [OPTIONS]
 #
 # Usage (one-liner curl pipe — repo must be public):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/install.sh) [OPTIONS]
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh) [OPTIONS]
 #
 #   If main branch is not yet available (e.g. PR not merged), target the branch:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/<branch>/scripts/install.sh) --branch <branch>
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/<branch>/scripts/install.sh) --branch <branch>
 #
 # Options:
 #   --data-dir  DIR   Where to store models, chat history, config (default: /opt/ollama)
@@ -44,7 +44,7 @@ DATA_DIR="${DATA_DIR:-/opt/ollama}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
 WEBUI_PORT="${WEBUI_PORT:-45213}"
 OLLAMA_VERSION="${OLLAMA_VERSION:-latest}"
-REPO_GIT="https://github.com/Crashcart/Ollama-intelgpu"
+REPO_GIT="https://github.com/Crashcart/Olama-intelgpu"
 # Branch is auto-detected below; override with --branch or the REPO_BRANCH env var.
 REPO_BRANCH="${REPO_BRANCH:-}"
 DOZZLE_PORT="${DOZZLE_PORT:-9999}"

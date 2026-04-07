@@ -13,8 +13,8 @@
   "no_gui": false,
   "exposable": true,
   "url_suffix": "/",
-  "source": "https://github.com/Crashcart/Ollama-intelgpu",
-  "website": "https://github.com/Crashcart/Ollama-intelgpu",
+  "source": "https://github.com/Crashcart/Olama-intelgpu",
+  "website": "https://github.com/Crashcart/Olama-intelgpu",
   "supported_architectures": ["amd64"],
   "form_fields": [
     {

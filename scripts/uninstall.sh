@@ -3,7 +3,7 @@
 # uninstall.sh — Remove the Ollama Intel GPU stack
 #
 # One-liner (mirrors install.sh — no local clone required):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/uninstall.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/uninstall.sh)
 #
 # From a local clone:
 #   bash scripts/uninstall.sh [OPTIONS]
@@ -439,7 +439,7 @@ if ! $PURGE_DATA && [[ -d "$DATA_DIR" ]]; then
   echo    "    └── memory/     — AI memory store"
   echo
   echo    "  To delete it now:  sudo rm -rf ${DATA_DIR}"
-  echo    "  To reinstall:      bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Ollama-intelgpu/main/scripts/install.sh)"
+  echo    "  To reinstall:      bash <(curl -fsSL https://raw.githubusercontent.com/Crashcart/Olama-intelgpu/main/scripts/install.sh)"
   echo
 fi
 
