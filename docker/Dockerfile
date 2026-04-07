@@ -35,11 +35,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # curl -fsSL is used instead of wget so that HTTP error responses (4xx/5xx)
 # cause an immediate build failure rather than silently piping an HTML error
 # page into gpg (which produces the misleading "no valid OpenPGP data" error).
-# The LTS-pinned distribution path (jammy/lts/2350) is used because the
-# generic "jammy unified" path was removed from the Intel repo.
+# The LTS-pinned distribution path (jammy/lts/2523) is used. The older
+# lts/2350 path has been deprecated and no longer carries libze1,
+# libze-intel-gpu1, or intel-ocloc; lts/2523 is the current supported LTS.
 RUN curl -fsSL https://repositories.intel.com/gpu/intel-graphics.key \
     | gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg \
-  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy/lts/2350 unified" \
+  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy/lts/2523 unified" \
     | tee /etc/apt/sources.list.d/intel-gpu-jammy.list
 
 # Install Intel GPU compute runtime (OpenCL + Level Zero)
