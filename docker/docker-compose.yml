@@ -77,7 +77,7 @@ services:
       args:
         OLLAMA_VERSION: ${OLLAMA_VERSION:-latest}
     image: ollama:${OLLAMA_VERSION:-latest}
-    container_name: ollama
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-ollama
     restart: unless-stopped
 
     labels:
@@ -175,7 +175,7 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
-    container_name: ollama-open-webui
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-open-webui
     restart: unless-stopped
     # Wait for all backends to pass their health checks before starting.
     # This prevents the UI from coming up before its dependencies are ready.
@@ -316,7 +316,7 @@ services:
     image: searxng/searxng:latest
     pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
-    container_name: ollama-searxng
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-searxng
     restart: unless-stopped
 
     labels:
@@ -378,7 +378,7 @@ services:
     image: ghcr.io/open-webui/pipelines:main
     pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
-    container_name: ollama-pipelines
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-pipelines
     restart: unless-stopped
 
     labels:
@@ -435,7 +435,7 @@ services:
       context: ./model-manager
       dockerfile: Dockerfile
     image: ollama-model-manager:latest
-    container_name: ollama-model-manager
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-model-manager
     restart: unless-stopped
     depends_on:
       ollama:
@@ -494,7 +494,7 @@ services:
       context: ./uds-proxy
       dockerfile: Dockerfile
     image: ollama-uds-proxy:latest
-    container_name: ollama-uds-proxy
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-uds-proxy
     restart: unless-stopped
     depends_on:
       ollama:
@@ -547,7 +547,7 @@ services:
       context: ./memory-browser
       dockerfile: Dockerfile
     image: ollama-memory-browser:latest
-    container_name: ollama-memory-browser
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-memory-browser
     restart: unless-stopped
 
     labels:
@@ -597,7 +597,7 @@ services:
       context: ./file-catalog
       dockerfile: Dockerfile
     image: ollama-file-catalog:latest
-    container_name: ollama-file-catalog
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-file-catalog
     restart: unless-stopped
 
     labels:
@@ -650,7 +650,7 @@ services:
       context: ./ghost-runner
       dockerfile: Dockerfile
     image: ollama-ghost-runner:latest
-    container_name: ollama-ghost-runner
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-ghost-runner
     restart: unless-stopped
     depends_on:
       ollama:
@@ -710,7 +710,7 @@ services:
       context: ./portal
       dockerfile: Dockerfile
     image: ollama-portal:latest
-    container_name: ollama-portal
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-portal
     restart: unless-stopped
     # Portal is purely a static page — it can start before the services it
     # frames; the iframes show a spinner until each service responds.
@@ -772,7 +772,7 @@ services:
     image: amir20/dozzle:latest
     pull_policy: if_not_present   # reuse existing container from a previous install
     platform: linux/amd64
-    container_name: ollama-dozzle
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-dozzle
     restart: unless-stopped
     # Dozzle streams live logs from the Docker socket; it needs extra time to
     # close those streams cleanly on shutdown.  Without this, Docker sends
@@ -794,7 +794,7 @@ services:
       # Show only this stack's containers (all have the com.ollama.category label)
       - DOZZLE_FILTER=label=com.ollama.category
       # Name shown in the Dozzle browser tab
-      - DOZZLE_HOSTNAME=ollama
+      - DOZZLE_HOSTNAME=${PROJECT_PREFIX:-olama-intelgpu}
       - DOZZLE_NO_ANALYTICS=true
       # Minimum log level shown in the Dozzle UI.
       # info  → shows all normal operational messages (default)

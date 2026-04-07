@@ -50,6 +50,7 @@ REPO_BRANCH="${REPO_BRANCH:-}"
 DOZZLE_PORT="${DOZZLE_PORT:-9999}"
 MODEL_MANAGER_PORT="${MODEL_MANAGER_PORT:-45214}"
 PORTAL_PORT="${PORTAL_PORT:-45200}"
+PROJECT_PREFIX="${PROJECT_PREFIX:-olama-intelgpu}"
 COMPOSE_PROJECT="ollama"
 RECREATE_CONTAINERS=false
 # Comma-separated CIDRs that may reach the UI ports (blank = any source = 0.0.0.0/0)
@@ -324,6 +325,14 @@ _generate_secret_if_missing() {
 _generate_secret_if_missing PIPELINES_API_KEY 20
 _generate_secret_if_missing WEBUI_SECRET_KEY  32
 
+# Preserve a user-customised PROJECT_PREFIX if already set in the .env file.
+# Only write the default on a fresh install (key absent from the file).
+_existing_prefix="$(grep -E "^PROJECT_PREFIX=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+if [[ -n "$_existing_prefix" ]]; then
+  PROJECT_PREFIX="$_existing_prefix"
+  info "PROJECT_PREFIX already set to '${PROJECT_PREFIX}' — keeping."
+fi
+
 # Always stamp install-time values so re-runs and upgrades stay consistent.
 # Everything else in the file (API keys, model names, feature flags, etc.) is left untouched.
 _stamp_env "$ENV_FILE" \
@@ -336,6 +345,7 @@ _stamp_env "$ENV_FILE" \
   OLLAMA_VERSION       "${OLLAMA_VERSION}" \
   VIDEO_GID            "${VIDEO_GID}" \
   RENDER_GID           "${RENDER_GID}" \
+  PROJECT_PREFIX       "${PROJECT_PREFIX}" \
   ALLOW_FROM           "${ALLOW_FROM:-any}"
 success ".env ready at ${ENV_FILE}"
 info "Review and adjust ${ENV_FILE} at any time — then run: docker compose up -d"
@@ -579,7 +589,7 @@ info "Checking service containers..."
 
 # Public registry images
 for svc in open-webui searxng pipelines dozzle; do
-  cname="ollama-${svc}"
+  cname="${PROJECT_PREFIX}-${svc}"
   if $RECREATE_CONTAINERS; then
     info "  $cname — --recreate set, pulling latest image..."
     COMPOSE_ANSI=never $COMPOSE_CMD pull "$svc"
@@ -595,7 +605,7 @@ done
 
 # Locally-built images (no registry — must use build, not pull)
 for svc in model-manager portal; do
-  cname="ollama-${svc}"
+  cname="${PROJECT_PREFIX}-${svc}"
   if $RECREATE_CONTAINERS; then
     info "  $cname — --recreate set, rebuilding image..."
     COMPOSE_ANSI=never $COMPOSE_CMD build --progress plain "$svc"
@@ -626,7 +636,7 @@ RETRIES=40
 until curl -sf "http://localhost:${OLLAMA_PORT}/" &>/dev/null; do
   RETRIES=$((RETRIES - 1))
   if [[ $RETRIES -le 0 ]]; then
-    error "Ollama did not become ready in time. Debug: docker logs ollama"
+    error "Ollama did not become ready in time. Debug: docker logs ${PROJECT_PREFIX}-ollama"
   fi
   printf '.'
   sleep 3
@@ -641,7 +651,7 @@ until curl -sf "http://localhost:${WEBUI_PORT}/" &>/dev/null; do
   RETRIES=$((RETRIES - 1))
   if [[ $RETRIES -le 0 ]]; then
     warn "Open WebUI did not become ready in time — it may still be starting."
-    warn "Check: docker logs ollama-open-webui"
+    warn "Check: docker logs ${PROJECT_PREFIX}-open-webui"
     break
   fi
   printf '.'
@@ -684,5 +694,5 @@ echo "  If Open WebUI shows a blank page or 'Ollama is running':"
 echo "    bash ${INSTALL_DIR}/scripts/update.sh"
 echo
 echo "  Verify Intel GPU is in use (after pulling a model):"
-echo "    docker exec ollama clinfo | grep -i 'device name'"
+echo "    docker exec ${PROJECT_PREFIX}-ollama clinfo | grep -i 'device name'"
 sep
