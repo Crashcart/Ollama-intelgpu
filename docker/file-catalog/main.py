@@ -36,8 +36,10 @@ DRIVES_DIR = Path(os.environ.get("DRIVES_DIR", "/drives"))
 MIN_SIZE_B = int(os.environ.get("MIN_SIZE_MB", "100")) * 1024 * 1024
 
 # Cache scan results to avoid re-walking potentially 100 GB of model files on every request.
+# 300 s (5 min) is intentional: a full os.walk over model dirs takes 1-10 s and model
+# files rarely change. Write operations (move/restore) explicitly invalidate the cache.
 _SCAN_CACHE: tuple[float, list] | None = None
-SCAN_TTL = 30  # seconds
+SCAN_TTL = 300  # seconds
 
 # Extensions commonly associated with large AI/data files
 LARGE_EXTS = {

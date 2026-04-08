@@ -36,6 +36,11 @@ OLLAMA_URL    = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434").rstrip(
 OLLAMA_SOCKET = os.environ.get("OLLAMA_SOCKET", "")
 DB_PATH       = os.environ.get("DB_PATH", "/data/ghost.db")
 
+# Persistent API connection — reused across all request handlers to avoid
+# per-request open/close overhead. _generate keeps its own long-lived connection
+# for batched token writes (WAL mode lets both coexist with concurrent access).
+_db: aiosqlite.Connection | None = None
+
 # Commit tokens to SQLite in batches to reduce I/O contention during inference.
 # Lower = more durability (fewer tokens lost on crash); higher = less disk pressure.
 TOKEN_COMMIT_BATCH = 20
@@ -158,13 +163,18 @@ async def _generate(task_id: str, model: str, prompt: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _db
     await init_db()
+    _db = await aiosqlite.connect(DB_PATH)
+    _db.row_factory = aiosqlite.Row
     yield
     # Cancel any in-flight tasks on shutdown so they mark themselves done
     for t in list(_running.values()):
         t.cancel()
     if _running:
         await asyncio.gather(*_running.values(), return_exceptions=True)
+    await _db.close()
+    _db = None
 
 
 app = FastAPI(title="Ghost Runner", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -190,12 +200,11 @@ class TaskRequest(BaseModel):
 async def create_task(req: TaskRequest):
     task_id = str(uuid.uuid4())
     now = time.time()
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO tasks VALUES (?,?,?,?,?,?)",
-            (task_id, req.model, req.prompt, "running", now, None),
-        )
-        await db.commit()
+    await _db.execute(
+        "INSERT INTO tasks VALUES (?,?,?,?,?,?)",
+        (task_id, req.model, req.prompt, "running", now, None),
+    )
+    await _db.commit()
     _running[task_id] = asyncio.create_task(
         _generate(task_id, req.model, req.prompt)
     )
@@ -204,26 +213,22 @@ async def create_task(req: TaskRequest):
 
 @app.get("/api/tasks")
 async def list_tasks():
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute(
-            """SELECT t.id, t.model, t.prompt, t.status, t.created_at, t.error,
-                      COUNT(tok.seq) AS token_count
-               FROM tasks t
-               LEFT JOIN tokens tok ON t.id = tok.task_id
-               GROUP BY t.id
-               ORDER BY t.created_at DESC"""
-        )
-        rows = await cur.fetchall()
+    cur = await _db.execute(
+        """SELECT t.id, t.model, t.prompt, t.status, t.created_at, t.error,
+                  COUNT(tok.seq) AS token_count
+           FROM tasks t
+           LEFT JOIN tokens tok ON t.id = tok.task_id
+           GROUP BY t.id
+           ORDER BY t.created_at DESC"""
+    )
+    rows = await cur.fetchall()
     return {"tasks": [dict(r) for r in rows]}
 
 
 @app.get("/api/task/{task_id}")
 async def get_task(task_id: str):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute("SELECT * FROM tasks WHERE id=?", (task_id,))
-        row = await cur.fetchone()
+    cur = await _db.execute("SELECT * FROM tasks WHERE id=?", (task_id,))
+    row = await cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
     return dict(row)
@@ -236,28 +241,29 @@ async def stream_task(task_id: str, from_seq: int = 0):
     (client stores last received seq in IndexedDB and reconnects with it).
     The stream closes with {"done": true, "status": "..."} when the task ends.
     """
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT id FROM tasks WHERE id=?", (task_id,))
-        if not await cur.fetchone():
-            raise HTTPException(status_code=404, detail="Task not found")
+    cur = await _db.execute("SELECT id FROM tasks WHERE id=?", (task_id,))
+    if not await cur.fetchone():
+        raise HTTPException(status_code=404, detail="Task not found")
 
     async def generate() -> AsyncGenerator[str, None]:
         seq = from_seq
         last_heartbeat = time.monotonic()
         while True:
-            async with aiosqlite.connect(DB_PATH) as db:
-                cur = await db.execute(
-                    "SELECT seq, token FROM tokens "
-                    "WHERE task_id=? AND seq>=? ORDER BY seq LIMIT 200",
-                    (task_id, seq),
-                )
-                rows = await cur.fetchall()
-                cur2 = await db.execute(
+            cur = await _db.execute(
+                "SELECT seq, token FROM tokens "
+                "WHERE task_id=? AND seq>=? ORDER BY seq LIMIT 200",
+                (task_id, seq),
+            )
+            rows = await cur.fetchall()
+            # Only check task status when the token queue is empty — avoids
+            # a redundant second query on every loop while generation is active.
+            status = None
+            if not rows:
+                cur2 = await _db.execute(
                     "SELECT status FROM tasks WHERE id=?", (task_id,)
                 )
                 status_row = await cur2.fetchone()
-
-            status = status_row[0] if status_row else "error"
+                status = status_row[0] if status_row else "error"
 
             for row in rows:
                 yield f"data: {json.dumps({'seq': row[0], 'token': row[1]})}\n\n"
@@ -288,10 +294,9 @@ async def delete_task(task_id: str):
     t = _running.pop(task_id, None)
     if t:
         t.cancel()
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("PRAGMA foreign_keys=ON")
-        await db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
-        await db.commit()
+    await _db.execute("PRAGMA foreign_keys=ON")
+    await _db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+    await _db.commit()
     return {"deleted": True, "task_id": task_id}
 
 

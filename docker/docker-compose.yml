@@ -510,9 +510,9 @@ services:
     # Healthy when the socket file exists and is a socket
     healthcheck:
       test: ["CMD-SHELL", "test -S /sockets/ollama.sock"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
-      retries: 6
+      retries: 3
       start_period: 15s
 
     logging:

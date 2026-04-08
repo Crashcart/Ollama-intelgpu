@@ -31,6 +31,10 @@ from pydantic import BaseModel
 
 DB_PATH = os.environ.get("DB_PATH", "/data/memory.db")
 
+# Persistent connection — reused across all requests to avoid per-request
+# open/close overhead. aiosqlite serialises access internally via a thread queue.
+_db: Optional[aiosqlite.Connection] = None
+
 
 # ---------------------------------------------------------------------------
 # Database
@@ -54,8 +58,13 @@ async def init_db() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _db
     await init_db()
+    _db = await aiosqlite.connect(DB_PATH)
+    _db.row_factory = aiosqlite.Row
     yield
+    await _db.close()
+    _db = None
 
 
 # ---------------------------------------------------------------------------
@@ -91,33 +100,27 @@ class MemoryUpdate(BaseModel):
 
 @app.get("/api/memories")
 async def list_memories():
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute(
-            "SELECT * FROM memories ORDER BY pinned DESC, updated_at DESC"
-        )
-        rows = await cur.fetchall()
+    cur = await _db.execute(
+        "SELECT * FROM memories ORDER BY pinned DESC, updated_at DESC"
+    )
+    rows = await cur.fetchall()
     return {"memories": [dict(r) for r in rows]}
 
 
 @app.get("/api/memories/pinned")
 async def pinned_memories():
     """Return only pinned memories — used by external services for context injection."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute(
-            "SELECT * FROM memories WHERE pinned=1 ORDER BY updated_at DESC"
-        )
-        rows = await cur.fetchall()
+    cur = await _db.execute(
+        "SELECT * FROM memories WHERE pinned=1 ORDER BY updated_at DESC"
+    )
+    rows = await cur.fetchall()
     return {"memories": [dict(r) for r in rows]}
 
 
 @app.get("/api/memory/{mid}")
 async def get_memory(mid: str):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute("SELECT * FROM memories WHERE id=?", (mid,))
-        row = await cur.fetchone()
+    cur = await _db.execute("SELECT * FROM memories WHERE id=?", (mid,))
+    row = await cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Memory not found")
     return dict(row)
@@ -130,41 +133,37 @@ async def create_memory(req: MemoryCreate):
         raise HTTPException(status_code=422, detail="Content cannot be empty")
     mid = str(uuid.uuid4())
     now = time.time()
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO memories VALUES (?,?,?,?,?)",
-            (mid, content, 0, now, now),
-        )
-        await db.commit()
+    await _db.execute(
+        "INSERT INTO memories VALUES (?,?,?,?,?)",
+        (mid, content, 0, now, now),
+    )
+    await _db.commit()
     return {"id": mid, "content": content, "pinned": 0, "created_at": now, "updated_at": now}
 
 
 @app.put("/api/memory/{mid}")
 async def update_memory(mid: str, req: MemoryUpdate):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute("SELECT * FROM memories WHERE id=?", (mid,))
-        row = await cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Memory not found")
-        content = req.content.strip() if req.content is not None else row["content"]
-        pinned  = int(req.pinned)     if req.pinned  is not None else row["pinned"]
-        if not content:
-            raise HTTPException(status_code=422, detail="Content cannot be empty")
-        now = time.time()
-        await db.execute(
-            "UPDATE memories SET content=?, pinned=?, updated_at=? WHERE id=?",
-            (content, pinned, now, mid),
-        )
-        await db.commit()
+    cur = await _db.execute("SELECT * FROM memories WHERE id=?", (mid,))
+    row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    content = req.content.strip() if req.content is not None else row["content"]
+    pinned  = int(req.pinned)     if req.pinned  is not None else row["pinned"]
+    if not content:
+        raise HTTPException(status_code=422, detail="Content cannot be empty")
+    now = time.time()
+    await _db.execute(
+        "UPDATE memories SET content=?, pinned=?, updated_at=? WHERE id=?",
+        (content, pinned, now, mid),
+    )
+    await _db.commit()
     return {"id": mid, "content": content, "pinned": bool(pinned), "updated_at": now}
 
 
 @app.delete("/api/memory/{mid}")
 async def delete_memory(mid: str):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM memories WHERE id=?", (mid,))
-        await db.commit()
+    await _db.execute("DELETE FROM memories WHERE id=?", (mid,))
+    await _db.commit()
     return {"deleted": True, "id": mid}
 
 

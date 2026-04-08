@@ -464,11 +464,13 @@ _STACK_CONTAINERS=(
   ollama-file-catalog ollama-ghost-runner ollama-portal ollama-dozzle
 )
 
+# One docker ps call for all names — avoids 11 separate subprocess invocations.
+_running_names=$(docker ps --format "{{.Names}}" 2>/dev/null || true)
 _cname_conflicts=false
 for _cname in "${_STACK_CONTAINERS[@]}"; do
-  _cid=$(docker ps -q -f "name=^${_cname}$" 2>/dev/null || true)
-  if [[ -n "$_cid" ]]; then
-    warn "  Container '${_cname}' is already running (${_cid})"
+  if echo "$_running_names" | grep -qx "$_cname"; then
+    _cid=$(echo "$_running_names" | grep -x "$_cname" | head -1 || true)
+    warn "  Container '${_cname}' is already running"
     _cname_conflicts=true
   else
     success "  ${_cname} — free"

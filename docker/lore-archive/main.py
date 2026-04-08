@@ -343,11 +343,15 @@ async def search_events(
     """
     query_vec = await embed(q)
 
+    # Cap at 10 000 most-recent embedded events. Fetching everything into RAM
+    # for cosine ranking becomes prohibitive (60+ MB) on large archives.
+    _SEARCH_CAP = 10_000
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
             "SELECT * FROM events WHERE embedding IS NOT NULL "
-            "ORDER BY realworld_ts DESC"
+            "ORDER BY realworld_ts DESC LIMIT ?",
+            (_SEARCH_CAP,),
         )
         rows = await cur.fetchall()
 
