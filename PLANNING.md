@@ -1,7 +1,7 @@
 # 🗺️ Session Planning
-**Date**: 2026-04-06 → 2026-04-07
-**Issue**: #59 — important change (Agnostic Docker Ecosystem Deployment & Conflict Prevention TDR)
-**Branch**: copilot/update-docker-images
+**Date**: 2026-04-06 → 2026-04-08
+**Issue**: #59 — important change (Agnostic Docker Ecosystem Deployment & Conflict Prevention TDR); also resolves "New request: install smallest LLM"
+**Branch**: copilot/install-smallest-llm
 
 ## Approach
 Implement the TDR requirements with minimal, surgical changes:
@@ -11,6 +11,7 @@ Implement the TDR requirements with minimal, surgical changes:
 4. Update all scripts that reference container names to use the PREFIX dynamically
 5. Change default model in `pull-model.sh` to `llama3.2:1b` (smallest, per owner comment)
 6. Fix Open WebUI startup timeout: RETRIES 40→100 (300 s), WEBUI_START_PERIOD 60s→120s
+7. Set `DEFAULT_MODELS=llama3.2:1b` in `.env.example` so Open WebUI pre-selects it
 
 ## Decisions Log
 - [2026-04-06] Set default PROJECT_PREFIX to `olama-intelgpu` (matches GitHub repo name, lowercase with hyphens for Docker compatibility)
@@ -21,6 +22,7 @@ Implement the TDR requirements with minimal, surgical changes:
 - [2026-04-06] install.sh preserves user-set PROJECT_PREFIX on re-run (reads from .env before stamping)
 - [2026-04-06] Default model changed from `mistral` (~4.1 GB) to `llama3.2:1b` (~770 MB) per owner's comment
 - [2026-04-07] CRITICAL fix: Open WebUI /health endpoint used instead of / — /health responds immediately on FastAPI startup, before embedding model downloads; RETRIES bumped to 200 (600s); WEBUI_START_PERIOD 300s; PIPELINES_START_PERIOD 60s; auto-pull llama3.2:1b if no models exist
+- [2026-04-08] Set DEFAULT_MODELS=llama3.2:1b in .env.example — Open WebUI pre-selects the smallest model for new conversations; users can override by clearing the value
 
 ## Open Questions
 - [ ] Should image names also use PROJECT_PREFIX (e.g. `${PROJECT_PREFIX}/app:latest` as TDR suggests)?

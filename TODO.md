@@ -1,5 +1,5 @@
 # 📋 Active Task List
-**Last Updated**: 2026-04-07 04:15 UTC
+**Last Updated**: 2026-04-08 03:00 UTC
 **Current Session**: Copilot Enterprise Agent
 
 ## Current Tasks
@@ -15,8 +15,10 @@
 | 8  | Validate all changes — shellcheck + manual review | ✅ completed | 🟡 MEDIUM | Done |
 | 9  | Fix Open WebUI startup timeout (too short on first install) | ✅ completed | 🔴 HIGH | RETRIES 40→100, WEBUI_START_PERIOD 60s→120s |
 | 10 | CRITICAL: Fix Open WebUI still not ready — use /health endpoint, auto-pull llama3.2:1b | ✅ completed | 🔴 CRITICAL | /health endpoint, RETRIES 200, start_period 300s, auto-pull |
+| 11 | Set DEFAULT_MODELS=llama3.2:1b in .env.example (issue: install smallest LLM) | ✅ completed | 🟡 MEDIUM | Open WebUI now pre-selects llama3.2:1b for new conversations |
 
 ## Completed This Session
 - ✅ Task 1–7: Implement Docker PROJECT_PREFIX naming convention (issue #59)
 - ✅ Task 9: Fix Open WebUI "did not become ready in time" false timeout
 - ✅ Task 10: CRITICAL fix — healthcheck on /health, 10-min wait, auto-pull llama3.2:1b on fresh install
+- ✅ Task 11: Set DEFAULT_MODELS=llama3.2:1b in .env.example — Open WebUI pre-selects smallest model
