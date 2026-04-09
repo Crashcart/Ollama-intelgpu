@@ -268,10 +268,12 @@ Open WebUI (v0.5+) has native MCP support via **Pipelines** or direct tool confi
 - Document architecture options
 - Identify model requirements
 
-### Phase 2 — MVP Integration (future PR)
-- Add `ollama-mcp-sql` service to `docker-compose.yml`
-- Configure SQLite adapter for `ghost.db` and `memories.db`
-- Document in `README.md`
+### Phase 2 — MVP Integration (✅ complete — this PR)
+- Added `ollama-mcp-sql` service to `docker-compose.yml`
+- Custom Python FastAPI service (`docker/mcp-sql/`) exposing both SQLite databases
+- Tools: `list_tables`, `describe_table`, `execute_query` (SELECT-only by default)
+- SQLite opened in read-only URI mode (`file:path?mode=ro`); flip `MCP_SQL_READ_ONLY=false` in `docker/.env` to allow writes
+- Internal-only port 8080; no host port exposed (Open WebUI reaches it via Docker network)
 
 ### Phase 3 — Open WebUI Tooling (future PR)
 - Register MCP endpoint in Open WebUI Tools

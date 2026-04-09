@@ -12,8 +12,8 @@
 | 5  | Create .github/ollama-request-speed.md performance guide | ✅ completed | 🟡 MEDIUM | Documents all speed optimisations |
 | 6  | Update .github/copilot-instructions.md with performance standards + new file refs | ✅ completed | 🟡 MEDIUM | References speed guide, new scripts entry |
 | 7  | Research SQL MCP Server (Azure SQL Dev Corner) and plan integration | ✅ completed | 🟡 MEDIUM | See .github/sql-mcp-server-research.md |
-| 8  | Implement MVP: add ollama-mcp-sql service to docker-compose.yml | 🔵 not-started | 🟡 MEDIUM | Phase 2 — awaiting human approval of plan |
-| 9  | Register MCP endpoint in Open WebUI Tools + document | 🔵 not-started | 🟢 LOW | Phase 3 — depends on task 8 |
+| 8  | Implement MVP: add ollama-mcp-sql service to docker-compose.yml | ✅ completed | 🟡 MEDIUM | Phase 2 — docker/mcp-sql/ service added |
+| 9  | Register MCP endpoint in Open WebUI Tools + document | 🔵 not-started | 🟢 LOW | Phase 3 — Admin → Tools → http://mcp-sql:8080/mcp |
 | 10 | Evaluate SQL Server 2025 upgrade for vector search | 🔵 not-started | 🟢 LOW | Phase 4 — only if vector/semantic memory needed |
 
 ## Completed This Session
@@ -24,3 +24,4 @@
 - ✅ Task 5: .github/ollama-request-speed.md created — full explanation of cold-start problem and fixes
 - ✅ Task 6: .github/copilot-instructions.md updated — performance standards section + new file references
 - ✅ Task 7: .github/sql-mcp-server-research.md created — SQL MCP Server evaluation, architecture options, recommendation
+- ✅ Task 8: docker/mcp-sql/ service created — lightweight Python FastAPI MCP JSON-RPC 2.0 server; added to docker-compose.yml

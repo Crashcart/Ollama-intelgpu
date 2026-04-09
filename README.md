@@ -18,6 +18,7 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 | `ollama-searxng` | `searxng` | Self-hosted web search backend | internal |
 | `ollama-pipelines` | `pipelines` | Python tool/function runtime for Open WebUI | internal |
 | `ollama-dozzle` | `dozzle` | Real-time web log viewer for all containers | `9999` |
+| `ollama-mcp-sql` | `mcp-sql` | MCP JSON-RPC 2.0 server — AI agent queries over ghost-runner + memory SQLite DBs | internal |
 
 All containers carry the `ollama-` prefix so they are easy to identify in `docker ps` alongside other stacks.
 
