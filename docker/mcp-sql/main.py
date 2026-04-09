@@ -160,7 +160,10 @@ async def _describe_table(database: str, table: str) -> str:
             row = await cur.fetchone()
         if not row:
             raise ValueError(f"Table '{table}' not found in the '{database}' database.")
-        safe_table = row[0]  # name confirmed to exist — used in PRAGMA (no bind-param support)
+        safe_table = row[0]  # value from sqlite_master, not raw user input
+        # PRAGMA table_info does not support bound parameters in any SQLite
+        # driver.  safe_table has been confirmed to exist via a parameterised
+        # query above, so using it in an f-string here is safe.
         async with db.execute(f"PRAGMA table_info({safe_table})") as cur:
             rows = await cur.fetchall()
     columns = [
@@ -181,7 +184,8 @@ async def _execute_query(database: str, query: str, limit: int = 100) -> str:
     # The SQLite URI mode=ro (opened below) is the hard write-guard at the
     # driver level; this first-token check exists solely to return a clear
     # error message before hitting the driver.
-    first_token = query.strip().split()[0].upper() if query.strip().split() else ""
+    tokens = query.strip().split()
+    first_token = tokens[0].upper() if tokens else ""
 
     # Enforce read-only: the first SQL keyword must be SELECT.
     if READ_ONLY and first_token != "SELECT":
@@ -324,12 +328,12 @@ async def mcp_endpoint(request: Request):
 
     try:
         result = await _dispatch(method, params)
-    except ValueError as exc:
-        # ValueError messages are written by us (unknown method, etc.) — safe to expose.
-        err_msg = str(exc)
+    except ValueError:
+        # The only ValueError that reaches here is "Method not found" from _dispatch;
+        # tool-level errors are caught inside _dispatch and returned as isError results.
         return JSONResponse({
             "jsonrpc": "2.0",
-            "error": {"code": -32601, "message": err_msg},
+            "error": {"code": -32601, "message": "Method not found"},
             "id": rpc_id,
         })
     except Exception:
