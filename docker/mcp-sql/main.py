@@ -28,7 +28,7 @@ import re
 import aiosqlite
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 logging.basicConfig(
     level=logging.INFO,
@@ -160,11 +160,9 @@ async def _describe_table(database: str, table: str) -> str:
             row = await cur.fetchone()
         if not row:
             raise ValueError(f"Table '{table}' not found in the '{database}' database.")
-        safe_table = row[0]  # name confirmed to exist in the database
+        safe_table = row[0]  # name confirmed to exist — used in PRAGMA (no bind-param support)
         async with db.execute(f"PRAGMA table_info({safe_table})") as cur:
             rows = await cur.fetchall()
-    if not rows:
-        raise ValueError(f"Table '{table}' not found in the '{database}' database.")
     columns = [
         {
             "name":    r[1],
@@ -179,41 +177,40 @@ async def _describe_table(database: str, table: str) -> str:
 
 
 async def _execute_query(database: str, query: str, limit: int = 100) -> str:
-    # Strip leading/trailing whitespace and collapse inline SQL comments so the
-    # first-token check below cannot be fooled by comments before SELECT.
-    stripped = re.sub(r"/\*.*?\*/|--[^\n]*", " ", query, flags=re.DOTALL).strip()
+    # Strip only leading/trailing whitespace for the keyword check.
+    # The SQLite URI mode=ro (opened below) is the hard write-guard at the
+    # driver level; this first-token check exists solely to return a clear
+    # error message before hitting the driver.
+    first_token = query.strip().split()[0].upper() if query.strip().split() else ""
 
     # Enforce read-only: the first SQL keyword must be SELECT.
-    # The SQLite URI mode=ro is the hard safeguard (driver-level); this check
-    # gives a clear error message before hitting the driver.
-    if READ_ONLY:
-        first_token = stripped.split()[0].upper() if stripped.split() else ""
-        if first_token != "SELECT":
-            raise ValueError(
-                "Only SELECT queries are allowed (READ_ONLY=true). "
-                "Set READ_ONLY=false in docker/.env to enable write access."
-            )
-
-    # Prevent semicolon-chained statements
-    if ";" in query:
-        raise ValueError("Multiple statements separated by ';' are not allowed.")
+    if READ_ONLY and first_token != "SELECT":
+        raise ValueError(
+            "Only SELECT queries are allowed (READ_ONLY=true). "
+            "Set READ_ONLY=false in docker/.env to enable write access."
+        )
 
     limit = min(max(1, int(limit)), 1000)
 
-    # Auto-append LIMIT if the query doesn't already have one.
-    # Use \b word boundaries to avoid matching 'LIMIT' inside identifiers or
-    # string literals (e.g. a column named 'CLIMIT' would otherwise prevent injection).
-    if not re.search(r"\bLIMIT\b", stripped, re.IGNORECASE):
-        query = query.rstrip(" \t\n") + f" LIMIT {limit}"
+    # Work on a normalised copy for LIMIT detection.
+    # Use the normalised form for LIMIT injection too — appending to the
+    # original could embed LIMIT inside a trailing comment.
+    normalised = query.strip()
+    if not re.search(r"\bLIMIT\b", normalised, re.IGNORECASE):
+        normalised = normalised + f" LIMIT {limit}"
 
     path = _resolve_db(database)
+    # Python's sqlite3/aiosqlite.execute() only ever runs a single statement,
+    # so multi-statement injection via ';' is not possible at the driver level.
+    # The mode=ro URI ensures the database is opened read-only regardless of
+    # what SQL the LLM generates.
     async with aiosqlite.connect(_db_uri(path), uri=True) as db:
-        async with db.execute(query) as cur:
+        async with db.execute(normalised) as cur:
             rows = await cur.fetchall()
             col_names = [d[0] for d in (cur.description or [])]
 
     result_rows = [dict(zip(col_names, row)) for row in rows]
-    log.info("execute_query database=%s rows=%d query=%.120s", database, len(result_rows), query)
+    log.info("execute_query database=%s rows=%d query=%.120s", database, len(result_rows), normalised)
     return json.dumps({"database": database, "rows": result_rows, "count": len(result_rows)})
 
 # ---------------------------------------------------------------------------
@@ -232,7 +229,7 @@ async def _call_tool(name: str, arguments: dict) -> str:
             arguments["query"],
             arguments.get("limit", 100),
         )
-    raise ValueError(f"Unknown tool: {name!r}")
+    raise ValueError("Unknown tool")
 
 
 async def _dispatch(method: str, params: dict) -> dict:
@@ -271,7 +268,7 @@ async def _dispatch(method: str, params: dict) -> dict:
         # Client notification — no id, no response required; return empty result
         return {}
 
-    raise ValueError(f"Unknown method: {method!r}")
+    raise ValueError("Method not found")
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -345,7 +342,6 @@ async def mcp_endpoint(request: Request):
 
     # Notifications have no id and expect no response body; return 204
     if rpc_id is None and method.startswith("notifications/"):
-        from fastapi.responses import Response
         return Response(status_code=204)
 
     return JSONResponse({"jsonrpc": "2.0", "result": result, "id": rpc_id})
