@@ -116,9 +116,20 @@ services:
       - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
 
       # Unload the model after this idle period to free VRAM.
-      # 5m is the Ollama default.  Set to 0 to keep loaded forever.
-      # Set to -1 to unload immediately after each request (max VRAM savings).
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
+      # -1 keeps the model loaded forever — best latency (recommended).
+      # 5m is the Ollama default; it causes 10-45 s cold-start after each idle gap.
+      # 0  unloads immediately after each request (max VRAM savings, worst latency).
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:--1}
+
+      # ── Request speed — Flash Attention & KV-cache quantization ────────────
+      # Flash Attention: 2-3× faster attention computation. Falls back silently
+      # if the model or runtime doesn't support it — safe to leave enabled.
+      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
+
+      # KV-cache quantization: reduces VRAM used by the attention cache, allowing
+      # larger contexts and faster inference. q8_0 = half the VRAM of f16 with
+      # negligible accuracy loss. q4_0 = ~75% savings with slight accuracy drop.
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
 
       # Allowed origins for the Ollama API (CORS + host-header check).
       # '*' permits any origin — works across all subnets, VPNs, and VLANs

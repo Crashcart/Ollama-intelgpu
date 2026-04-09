@@ -1,26 +1,21 @@
 # 📋 Active Task List
-**Last Updated**: 2026-04-09 01:15 UTC
+**Last Updated**: 2026-04-09 17:30 UTC
 **Current Session**: Copilot Enterprise Agent
 
 ## Current Tasks
 | ID | Task Title | Status | Priority | Notes |
 |:--:|-----------|--------|----------|-------|
-| 1  | Add PROJECT_PREFIX to .env.example | ✅ completed | 🔴 HIGH | Done |
-| 2  | Update docker-compose.yml container names to use ${PROJECT_PREFIX} | ✅ completed | 🔴 HIGH | 11 containers updated |
-| 3  | Create scripts/deploy.sh pre-flight wrapper | ✅ completed | 🔴 HIGH | Container + port checks, --force/--down/--status flags |
-| 4  | Update scripts/install.sh with PROJECT_PREFIX support | ✅ completed | 🔴 HIGH | Stamps to .env, preserves user value |
-| 5  | Update scripts/pull-model.sh — dynamic container name + smallest default model | ✅ completed | 🟡 MEDIUM | Default changed to llama3.2:1b |
-| 6  | Update scripts/uninstall.sh — PROJECT_PREFIX fallback container list | ✅ completed | 🟡 MEDIUM | Done |
-| 7  | Update scripts/logs.sh — dynamic CNAME map | ✅ completed | 🟡 MEDIUM | Done |
-| 8  | Validate all changes — shellcheck + manual review | ✅ completed | 🟡 MEDIUM | Done |
-| 9  | Fix Open WebUI startup timeout (too short on first install) | ✅ completed | 🔴 HIGH | RETRIES 40→100, WEBUI_START_PERIOD 60s→120s |
-| 10 | CRITICAL: Fix Open WebUI still not ready — use /health endpoint, auto-pull llama3.2:1b | ✅ completed | 🔴 CRITICAL | /health endpoint, RETRIES 200, start_period 300s, auto-pull |
-| 11 | Set DEFAULT_MODELS=llama3.2:1b in .env.example (issue: install smallest LLM) | ✅ completed | 🟡 MEDIUM | Open WebUI now pre-selects llama3.2:1b for new conversations |
-| 12 | CRITICAL: Fix model-manager container restart loop — missing COPY models.json | ✅ completed | 🔴 CRITICAL | Added COPY models.json to Dockerfile |
+| 1  | Change OLLAMA_KEEP_ALIVE default to -1 in .env.example + docker-compose.yml | ✅ completed | 🔴 HIGH | Eliminates cold-start penalty |
+| 2  | Add OLLAMA_FLASH_ATTENTION=1 to .env.example + docker-compose.yml | ✅ completed | 🔴 HIGH | 2-3× faster inference |
+| 3  | Add OLLAMA_KV_CACHE_TYPE=q8_0 to .env.example + docker-compose.yml | ✅ completed | 🔴 HIGH | ~50% VRAM reduction |
+| 4  | Create scripts/keep-alive.sh heartbeat script | ✅ completed | 🟡 MEDIUM | Safety net against client-side eviction |
+| 5  | Create .github/ollama-request-speed.md performance guide | ✅ completed | 🟡 MEDIUM | Documents all speed optimisations |
+| 6  | Update .github/copilot-instructions.md with performance standards + new file refs | ✅ completed | 🟡 MEDIUM | References speed guide, new scripts entry |
 
 ## Completed This Session
-- ✅ Task 1–7: Implement Docker PROJECT_PREFIX naming convention (issue #59)
-- ✅ Task 9: Fix Open WebUI "did not become ready in time" false timeout
-- ✅ Task 10: CRITICAL fix — healthcheck on /health, 10-min wait, auto-pull llama3.2:1b on fresh install
-- ✅ Task 11: Set DEFAULT_MODELS=llama3.2:1b in .env.example — Open WebUI pre-selects smallest model
-- ✅ Task 12: CRITICAL — Added `COPY models.json .` to model-manager/Dockerfile (issue: docker keeps rebooting)
+- ✅ Task 1: OLLAMA_KEEP_ALIVE default changed from `5m` → `-1` (keeps model in VRAM indefinitely)
+- ✅ Task 2: OLLAMA_FLASH_ATTENTION=1 added to .env.example and docker-compose.yml
+- ✅ Task 3: OLLAMA_KV_CACHE_TYPE=q8_0 added to .env.example and docker-compose.yml
+- ✅ Task 4: scripts/keep-alive.sh created — heartbeat script to prevent client-side model eviction
+- ✅ Task 5: .github/ollama-request-speed.md created — full explanation of cold-start problem and fixes
+- ✅ Task 6: .github/copilot-instructions.md updated — performance standards section + new file references

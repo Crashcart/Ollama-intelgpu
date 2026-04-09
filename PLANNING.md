@@ -1,29 +1,36 @@
 # 🗺️ Session Planning
 **Date**: 2026-04-09
-**Issue**: docker keeps rebooting (model-manager restart loop)
-**Branch**: copilot/fix-docker-keeos-rebooting
-**Tier**: TIER 1 — CRITICAL (production crash)
+**Issue**: Speed up Ollama requests — "worst way to keep running them"
+**Branch**: copilot/update-github-for-speed-requests
 
 ## Approach
-Root cause: `docker/model-manager/Dockerfile` was missing `COPY models.json .`.
-`main.py` reads `models.json` at module level (`CATALOG = json.loads(_CATALOG_PATH.read_text())`).
-When the file was absent in the container, uvicorn failed to import the app, the process exited with
-a non-zero code, and Docker's `restart: unless-stopped` policy caused an infinite restart loop.
+Root cause: Ollama's default `KEEP_ALIVE=5m` evicts models from VRAM after 5 minutes of idle.
+Each post-eviction request incurs a 10–45 s cold-start penalty (model reload from disk).
 
-Fix: add a single line `COPY models.json .` to the Dockerfile, directly after `COPY main.py .`.
+Three-lever fix:
+1. `OLLAMA_KEEP_ALIVE=-1` — keeps model in VRAM indefinitely (biggest impact)
+2. `OLLAMA_FLASH_ATTENTION=1` — 2-3× faster attention computation (no downside)
+3. `OLLAMA_KV_CACHE_TYPE=q8_0` — ~50% VRAM reduction via quantised KV cache
+
+Safety net: `scripts/keep-alive.sh` heartbeat pings the model every 4 minutes, preventing
+client-side `keep_alive` overrides from evicting it unexpectedly.
+
+Documentation:
+- `.github/ollama-request-speed.md` — full guide explaining all optimisations
+- `.github/copilot-instructions.md` — updated with performance standards section
 
 ## Decisions Log
+- [2026-04-09] Changed OLLAMA_KEEP_ALIVE default from `5m` to `-1` — eliminates cold-start
+- [2026-04-09] Added OLLAMA_FLASH_ATTENTION=1 — safe default, falls back silently if unsupported
+- [2026-04-09] Added OLLAMA_KV_CACHE_TYPE=q8_0 — best balance of VRAM savings vs quality
+- [2026-04-09] Created scripts/keep-alive.sh — protects against client-side eviction overrides
+- [2026-04-09] Created .github/ollama-request-speed.md — documents all speed levers for future agents
 - [2026-04-06] Set default PROJECT_PREFIX to `olama-intelgpu` (matches GitHub repo name, lowercase with hyphens for Docker compatibility)
-- [2026-04-06] Container naming: `${PROJECT_PREFIX}-ollama`, `${PROJECT_PREFIX}-open-webui`, etc. (hyphen-separated as specified in TDR)
-- [2026-04-06] Image names (`ollama:latest`, `ollama-model-manager:latest`, etc.) left unchanged — only `container_name:` is prefixed, reducing scope of change
-- [2026-04-06] deploy.sh sits alongside install.sh (not replacing it) — as owner said "you decide" on whether it replaces install.sh
-- [2026-04-06] Port conflict coverage: all host-exposed ports checked (OLLAMA, WEBUI, MODEL_MANAGER, PORTAL, GHOST_RUNNER, MEMORY, FILE_CATALOG, DOZZLE); internal-only services skipped
-- [2026-04-06] install.sh preserves user-set PROJECT_PREFIX on re-run (reads from .env before stamping)
-- [2026-04-06] Default model changed from `mistral` (~4.1 GB) to `llama3.2:1b` (~770 MB) per owner's comment
-- [2026-04-07] CRITICAL fix: Open WebUI /health endpoint used instead of / — /health responds immediately on FastAPI startup, before embedding model downloads; RETRIES bumped to 200 (600s); WEBUI_START_PERIOD 300s; PIPELINES_START_PERIOD 60s; auto-pull llama3.2:1b if no models exist
-- [2026-04-08] Set DEFAULT_MODELS=llama3.2:1b in .env.example — Open WebUI pre-selects the smallest model for new conversations; users can override by clearing the value
+- [2026-04-06] Container naming: `${PROJECT_PREFIX}-[service]`
+- [2026-04-06] deploy.sh sits alongside install.sh
+- [2026-04-07] CRITICAL fix: Open WebUI /health endpoint used, RETRIES 200, auto-pull llama3.2:1b
+- [2026-04-08] Set DEFAULT_MODELS=llama3.2:1b in .env.example
 
 ## Open Questions
-- [ ] Should image names also use PROJECT_PREFIX (e.g. `${PROJECT_PREFIX}/app:latest` as TDR suggests)?
-  Currently left as `ollama-model-manager:latest` etc. to minimize scope.
-- [ ] Should deploy.sh eventually replace install.sh as the primary entry point, or remain a companion script?
+- [ ] Should image names also use PROJECT_PREFIX?
+- [ ] Should deploy.sh eventually replace install.sh as the primary entry point?
