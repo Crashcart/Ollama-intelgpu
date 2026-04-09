@@ -1,5 +1,5 @@
 # 📋 Active Task List
-**Last Updated**: 2026-04-09 17:30 UTC
+**Last Updated**: 2026-04-09 21:36 UTC
 **Current Session**: Copilot Enterprise Agent
 
 ## Current Tasks
@@ -11,6 +11,10 @@
 | 4  | Create scripts/keep-alive.sh heartbeat script | ✅ completed | 🟡 MEDIUM | Safety net against client-side eviction |
 | 5  | Create .github/ollama-request-speed.md performance guide | ✅ completed | 🟡 MEDIUM | Documents all speed optimisations |
 | 6  | Update .github/copilot-instructions.md with performance standards + new file refs | ✅ completed | 🟡 MEDIUM | References speed guide, new scripts entry |
+| 7  | Research SQL MCP Server (Azure SQL Dev Corner) and plan integration | ✅ completed | 🟡 MEDIUM | See .github/sql-mcp-server-research.md |
+| 8  | Implement MVP: add ollama-mcp-sql service to docker-compose.yml | 🔵 not-started | 🟡 MEDIUM | Phase 2 — awaiting human approval of plan |
+| 9  | Register MCP endpoint in Open WebUI Tools + document | 🔵 not-started | 🟢 LOW | Phase 3 — depends on task 8 |
+| 10 | Evaluate SQL Server 2025 upgrade for vector search | 🔵 not-started | 🟢 LOW | Phase 4 — only if vector/semantic memory needed |
 
 ## Completed This Session
 - ✅ Task 1: OLLAMA_KEEP_ALIVE default changed from `5m` → `-1` (keeps model in VRAM indefinitely)
@@ -19,3 +23,4 @@
 - ✅ Task 4: scripts/keep-alive.sh created — heartbeat script to prevent client-side model eviction
 - ✅ Task 5: .github/ollama-request-speed.md created — full explanation of cold-start problem and fixes
 - ✅ Task 6: .github/copilot-instructions.md updated — performance standards section + new file references
+- ✅ Task 7: .github/sql-mcp-server-research.md created — SQL MCP Server evaluation, architecture options, recommendation

@@ -139,6 +139,11 @@ Closes #[number]
 | `.github/ollama-request-speed.md` | Root causes of slow requests + all speed settings explained |
 | `.github/docker-optimization.md` | Docker image size reduction guide |
 
+### Integration Research (read before adding new services or data layers)
+| File | Description |
+|------|-------------|
+| `.github/sql-mcp-server-research.md` | SQL MCP Server evaluation — options, architecture, model requirements, phased plan |
+
 ### Scripts (review all before editing any)
 | File | Description |
 |------|-------------|
