@@ -1,17 +1,16 @@
 # 🗺️ Session Planning
-**Date**: 2026-04-06 → 2026-04-08
-**Issue**: #59 — important change (Agnostic Docker Ecosystem Deployment & Conflict Prevention TDR); also resolves "New request: install smallest LLM"
-**Branch**: copilot/install-smallest-llm
+**Date**: 2026-04-09
+**Issue**: docker keeps rebooting (model-manager restart loop)
+**Branch**: copilot/fix-docker-keeos-rebooting
+**Tier**: TIER 1 — CRITICAL (production crash)
 
 ## Approach
-Implement the TDR requirements with minimal, surgical changes:
-1. Add `PROJECT_PREFIX=olama-intelgpu` to `.env.example` (repo-name-based default)
-2. Update all `container_name:` fields in `docker/docker-compose.yml` to use `${PROJECT_PREFIX:-olama-intelgpu}`
-3. Create `scripts/deploy.sh` as a standalone pre-flight wrapper (container name + port conflict detection, `--force`, `--down`, `--status` flags)
-4. Update all scripts that reference container names to use the PREFIX dynamically
-5. Change default model in `pull-model.sh` to `llama3.2:1b` (smallest, per owner comment)
-6. Fix Open WebUI startup timeout: RETRIES 40→100 (300 s), WEBUI_START_PERIOD 60s→120s
-7. Set `DEFAULT_MODELS=llama3.2:1b` in `.env.example` so Open WebUI pre-selects it
+Root cause: `docker/model-manager/Dockerfile` was missing `COPY models.json .`.
+`main.py` reads `models.json` at module level (`CATALOG = json.loads(_CATALOG_PATH.read_text())`).
+When the file was absent in the container, uvicorn failed to import the app, the process exited with
+a non-zero code, and Docker's `restart: unless-stopped` policy caused an infinite restart loop.
+
+Fix: add a single line `COPY models.json .` to the Dockerfile, directly after `COPY main.py .`.
 
 ## Decisions Log
 - [2026-04-06] Set default PROJECT_PREFIX to `olama-intelgpu` (matches GitHub repo name, lowercase with hyphens for Docker compatibility)
