@@ -30,6 +30,7 @@ Documentation:
 - [2026-04-09] Created .github/ollama-request-speed.md — documents all speed levers for future agents
 - [2026-04-09] Researched SQL MCP Server — recommend Option A (SQLite MCP shim) as MVP
 - [2026-04-09] Created .github/sql-mcp-server-research.md — full evaluation + phased plan
+- [2026-04-09] Implemented Phase 2 (Task 8) — created docker/mcp-sql/ lightweight MCP server; added to docker-compose.yml as mcp-sql service (internal port 8080, read-only SQLite URI mounts)
 - [2026-04-06] Set default PROJECT_PREFIX to `olama-intelgpu` (matches GitHub repo name, lowercase with hyphens for Docker compatibility)
 - [2026-04-06] Container naming: `${PROJECT_PREFIX}-[service]`
 - [2026-04-06] deploy.sh sits alongside install.sh
@@ -39,5 +40,6 @@ Documentation:
 ## Open Questions
 - [ ] Should image names also use PROJECT_PREFIX?
 - [ ] Should deploy.sh eventually replace install.sh as the primary entry point?
-- [ ] Human approval needed: proceed with Phase 2 (add ollama-mcp-sql to docker-compose)?
-- [ ] Should MCP write access be enabled (allows agents to create memories) or read-only only?
+- [x] Human approval needed: proceed with Phase 2 (add ollama-mcp-sql to docker-compose)? — ✅ DONE
+- [ ] Should MCP write access be enabled for agents? Default is read-only; set MCP_SQL_READ_ONLY=false in docker/.env to enable.
+- [ ] Phase 3: Register MCP endpoint in Open WebUI Tools (Admin → Tools → http://mcp-sql:8080/mcp)
