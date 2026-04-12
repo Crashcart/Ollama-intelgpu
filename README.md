@@ -11,16 +11,15 @@ Supports **Intel Arc**, **Iris Xe**, and **integrated Intel graphics** via Intel
 
 | Container | Service | Purpose | Port |
 |---|---|---|---|
-| `ollama-portal` | `portal` | **Unified web portal** — Chat, Models, and Logs in one tab | `45200` |
-| `ollama` | `ollama` | Ollama LLM engine — Intel GPU passthrough | `11434` |
-| `ollama-open-webui` | `open-webui` | Browser chat UI | `45213` |
-| `ollama-model-manager` | `model-manager` | Model search, download, and delete UI | `45214` |
-| `ollama-searxng` | `searxng` | Self-hosted web search backend | internal |
-| `ollama-pipelines` | `pipelines` | Python tool/function runtime for Open WebUI | internal |
-| `ollama-dozzle` | `dozzle` | Real-time web log viewer for all containers | `9999` |
-| `ollama-mcp-sql` | `mcp-sql` | MCP JSON-RPC 2.0 server — AI agent queries over ghost-runner + memory SQLite DBs | internal |
+| `olama-intelgpu-portal` | `portal` | **Unified web portal** — Chat, Models, and Logs in one tab | `45200` |
+| `olama-intelgpu-ollama` | `ollama` | Ollama LLM engine — Intel GPU passthrough | `11434` |
+| `olama-intelgpu-open-webui` | `open-webui` | Browser chat UI | `45213` |
+| `olama-intelgpu-model-manager` | `model-manager` | Model search, download, and delete UI | `45214` |
+| `olama-intelgpu-searxng` | `searxng` | Self-hosted web search backend | internal |
+| `olama-intelgpu-pipelines` | `pipelines` | Python tool/function runtime for Open WebUI | internal |
+| `olama-intelgpu-dozzle` | `dozzle` | Real-time web log viewer for all containers | `9999` |
 
-All containers carry the `ollama-` prefix so they are easy to identify in `docker ps` alongside other stacks.
+All containers carry the `olama-intelgpu-` prefix (set by `PROJECT_PREFIX` in `docker/.env`) so they are easy to identify in `docker ps` alongside other stacks.
 
 **The portal is the recommended bookmark.** Open `http://localhost:45200` once and you can reach Chat, Models, and Logs from the top nav without switching tabs or ports. Each service is still accessible directly on its own port if you prefer.
 
@@ -101,8 +100,8 @@ Or from the CLI:
 bash /opt/ollama-stack/scripts/pull-model.sh
 
 # Or pull directly
-docker exec ollama ollama pull mistral
-docker exec ollama ollama pull llama3.2:3b
+docker exec olama-intelgpu-ollama ollama pull mistral
+docker exec olama-intelgpu-ollama ollama pull llama3.2:3b
 ```
 
 **Step 3 — Open the portal**
@@ -195,7 +194,7 @@ The stack is designed to work across subnets out of the box:
   OLLAMA_ORIGINS=http://localhost,https://localhost,http://127.0.0.1,http://192.168.,http://10.,http://172.,http://100.
   ```
 
-  Then restart: `docker compose -f /opt/ollama-stack/docker/docker-compose.yml restart ollama`
+  Then restart: `docker compose -f /opt/ollama-stack/docker/docker-compose.yml restart olama-intelgpu-ollama`
 
 - **ZeroTier** — ZeroTier creates a virtual network interface (e.g. `ztXXXXXX`). The stack binds to `0.0.0.0` so it listens on that interface automatically. The only thing to do is use the ZeroTier-assigned IP address instead of the `.local` mDNS hostname, because mDNS does not traverse ZeroTier:
 
@@ -234,7 +233,7 @@ The easiest way to add HTTPS is a **Caddy** reverse proxy — it handles TLS aut
 ```yaml
   caddy:
     image: caddy:alpine
-    container_name: ollama-caddy
+    container_name: olama-intelgpu-caddy
     restart: unless-stopped
     ports:
       - "443:443"
@@ -257,7 +256,7 @@ volumes:
 # Replace ollama.example.com with your domain or LAN hostname.
 # For a self-signed cert on LAN (no domain), use: tls internal
 ollama.example.com {
-    reverse_proxy ollama-portal:8080
+    reverse_proxy olama-intelgpu-portal:8080
 }
 ```
 
@@ -269,7 +268,7 @@ cd docker && docker compose up -d caddy
 
 Caddy will automatically obtain a Let's Encrypt certificate for your domain (port 443 must be reachable from the internet), or issue a locally-trusted self-signed cert with `tls internal` for LAN-only use.
 
-> For Nginx or Traefik setups, proxy `http://ollama-portal:8080` (portal), `http://ollama-open-webui:8080` (chat), and `http://ollama-model-manager:8080` (models) on the internal `ollama_net` network.
+> For Nginx or Traefik setups, proxy `http://olama-intelgpu-portal:8080` (portal), `http://olama-intelgpu-open-webui:8080` (chat), and `http://olama-intelgpu-model-manager:8080` (models) on the internal `ollama_net` network.
 
 ---
 
@@ -317,7 +316,7 @@ docker compose up -d --no-recreate
 **Step 4 — Pull a model**
 
 ```bash
-docker exec ollama ollama pull mistral
+docker exec olama-intelgpu-ollama ollama pull mistral
 # or use the helper
 bash scripts/pull-model.sh
 ```
@@ -436,7 +435,7 @@ For a live (running-stack) snapshot you can use SQLite's backup command directly
 
 ```bash
 # Safe live backup of just the chat database
-docker exec ollama-open-webui sqlite3 /app/backend/data/webui.db ".backup /app/backend/data/webui.db.bak"
+docker exec olama-intelgpu-open-webui sqlite3 /app/backend/data/webui.db ".backup /app/backend/data/webui.db.bak"
 cp ${DATA_DIR}/webui/webui.db.bak /mnt/backup/ollama/webui.db
 ```
 
@@ -505,10 +504,10 @@ Set in `docker/.env` and restart: `docker compose up -d dozzle`
 sudo intel_gpu_top
 
 # Verify OpenCL device is visible inside the container
-docker exec ollama clinfo | grep -i "device name"
+docker exec olama-intelgpu-ollama clinfo | grep -i "device name"
 
 # Run a quick inference
-docker exec ollama ollama run mistral "hello"
+docker exec olama-intelgpu-ollama ollama run mistral "hello"
 ```
 
 **Build failure — Intel GPU driver download fails**
@@ -638,7 +637,7 @@ You (toggle ON) → Open WebUI → SearXNG → Public search engines
 2. **Ollama (Intel GPU)** will appear in your store.
 3. Install it, then pull a model:
    ```bash
-   docker exec ollama ollama pull mistral
+   docker exec olama-intelgpu-ollama ollama pull mistral
    ```
 
 ### Option B — Copy files manually
