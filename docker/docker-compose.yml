@@ -116,9 +116,20 @@ services:
       - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
 
       # Unload the model after this idle period to free VRAM.
-      # 5m is the Ollama default.  Set to 0 to keep loaded forever.
-      # Set to -1 to unload immediately after each request (max VRAM savings).
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
+      # -1 keeps the model loaded forever — best latency (recommended).
+      # 5m is the Ollama default; it causes 10-45 s cold-start after each idle gap.
+      # 0  unloads immediately after each request (max VRAM savings, worst latency).
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:--1}
+
+      # ── Request speed — Flash Attention & KV-cache quantization ────────────
+      # Flash Attention: 2-3× faster attention computation. Falls back silently
+      # if the model or runtime doesn't support it — safe to leave enabled.
+      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
+
+      # KV-cache quantization: reduces VRAM used by the attention cache, allowing
+      # larger contexts and faster inference. q8_0 = half the VRAM of f16 with
+      # negligible accuracy loss. q4_0 = ~75% savings with slight accuracy drop.
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
 
       # Allowed origins for the Ollama API (CORS + host-header check).
       # '*' permits any origin — works across all subnets, VPNs, and VLANs
@@ -690,6 +701,82 @@ services:
         max-size: "${LOG_MAX_SIZE:-10m}"
         max-file: "${LOG_MAX_FILES:-5}"
         tag: "ghost-runner"
+
+    networks:
+      - ollama_net
+
+# =============================================================================
+#  CATEGORY: AI DATA — MCP SQL
+#  Purpose : Lightweight Model Context Protocol server that exposes the
+#            ghost-runner (tasks/tokens) and memory-browser (memories) SQLite
+#            databases to AI agents via JSON-RPC 2.0 over HTTP.
+#            With a tool-calling model active in Open WebUI, users can ask
+#            "what tasks have I run?", "show me my pinned memories", etc.
+#            and the LLM translates the question into a safe SQL SELECT query.
+#  Port    : 45218 (internal only by default — no host exposure needed)
+#            Uncomment the 'ports' block below to expose it to external clients
+#            such as Cursor or VS Code MCP extensions.
+#  Data    : ${DATA_DIR}/ghost  (ghost.db — read-only mount)
+#            ${DATA_DIR}/memory (memory.db — read-only mount)
+#  Connect : Open WebUI → Admin → Tools → Add Tool
+#              Endpoint: http://mcp-sql:8080/mcp
+#              Select any tool-calling model (llama3.2, qwen2.5, mistral…)
+# =============================================================================
+
+  mcp-sql:
+    build:
+      context: ./mcp-sql
+      dockerfile: Dockerfile
+    image: ollama-mcp-sql:latest
+    container_name: ${PROJECT_PREFIX:-olama-intelgpu}-mcp-sql
+    restart: unless-stopped
+    # Wait for ghost-runner and memory-browser to initialise their SQLite
+    # databases before this server starts (avoids "file not found" on first boot).
+    depends_on:
+      ghost-runner:
+        condition: service_healthy
+      memory-browser:
+        condition: service_healthy
+
+    labels:
+      com.ollama.category: "ai-data"
+      com.ollama.description: "MCP SQL — AI agent access to ghost-runner and memory SQLite databases"
+      com.ollama.data: "${DATA_DIR:-/opt/ollama}/ghost, ${DATA_DIR:-/opt/ollama}/memory"
+      com.ollama.log: "${DATA_DIR:-/opt/ollama}/logs/mcp-sql.log"
+
+    # No host port by default — Open WebUI reaches this container via the
+    # internal Docker network name 'mcp-sql'.  Uncomment to expose externally:
+    # ports:
+    #   - "${MCP_SQL_PORT:-45218}:8080"
+
+    environment:
+      # Paths inside the container (matched to the volume mounts below)
+      - GHOST_DB_PATH=/data/ghost/ghost.db
+      - MEMORY_DB_PATH=/data/memory/memory.db
+      # Read-only mode (true): only SELECT queries are accepted.
+      # Set to false in docker/.env to allow agents to INSERT/UPDATE/DELETE.
+      - READ_ONLY=${MCP_SQL_READ_ONLY:-true}
+
+    volumes:
+      # Mounted read-only — the MCP server queries data but never writes it.
+      # The underlying WAL mode (set by ghost-runner and memory-browser at init)
+      # ensures zero read/write contention even when the owning service is active.
+      - ${DATA_DIR:-/opt/ollama}/ghost:/data/ghost:ro
+      - ${DATA_DIR:-/opt/ollama}/memory:/data/memory:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('localhost', 8080), 2).close()\""]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-5}"
+        tag: "mcp-sql"
 
     networks:
       - ollama_net

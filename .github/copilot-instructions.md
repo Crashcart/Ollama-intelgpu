@@ -133,6 +133,17 @@ Closes #[number]
 | `docker/Dockerfile` | Container image definition |
 | `docker/docker-compose.yml` | Container orchestration |
 
+### Speed & Performance Guides (read before suggesting Ollama config changes)
+| File | Description |
+|------|-------------|
+| `.github/ollama-request-speed.md` | Root causes of slow requests + all speed settings explained |
+| `.github/docker-optimization.md` | Docker image size reduction guide |
+
+### Integration Research (read before adding new services or data layers)
+| File | Description |
+|------|-------------|
+| `.github/sql-mcp-server-research.md` | SQL MCP Server evaluation — options, architecture, model requirements, phased plan |
+
 ### Scripts (review all before editing any)
 | File | Description |
 |------|-------------|
@@ -141,6 +152,7 @@ Closes #[number]
 | `scripts/update.sh` | Update script |
 | `scripts/pull-model.sh` | Model download script |
 | `scripts/logs.sh` | Log collection script |
+| `scripts/keep-alive.sh` | Heartbeat — keeps model in VRAM, prevents cold-start eviction |
 
 ### Rule: File Monitoring Protocol
 1. **Before every session**: Read `TODO.md` + `PLANNING.md` + `copilot-instructions.md`
@@ -158,6 +170,22 @@ Closes #[number]
 - Use parameterized queries (no SQL injection)
 - Review against OWASP Top 10 on every PR
 - Never commit `.env` files
+
+---
+
+## ⚡ PERFORMANCE STANDARDS — OLLAMA REQUEST SPEED
+
+> Full details: `.github/ollama-request-speed.md`
+
+When making changes that affect Ollama configuration, always verify these three settings are applied:
+
+| Setting | Required Value | Why |
+|---------|---------------|-----|
+| `OLLAMA_KEEP_ALIVE` | `-1` | Eliminates 10–45 s cold-start after idle |
+| `OLLAMA_FLASH_ATTENTION` | `1` | 2–3× faster inference, no downside |
+| `OLLAMA_KV_CACHE_TYPE` | `q8_0` | ~50% less VRAM, negligible quality loss |
+
+**Rule:** Any PR that changes Ollama environment variables must explain the performance impact. Use `.github/ollama-request-speed.md` as the reference.
 
 ---
 
